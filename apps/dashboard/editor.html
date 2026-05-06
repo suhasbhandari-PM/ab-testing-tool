@@ -1,0 +1,2466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Experiment Editor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f9fafb; color: #111827; height: 100vh; display: flex; flex-direction: column; }
+
+    /* Top bar */
+    .topbar { background: #1e1b4b; color: #e0e7ff; padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+    .topbar a { color: #a5b4fc; text-decoration: none; font-size: 13px; }
+    .topbar a:hover { color: #fff; }
+    .topbar input[type=text] { flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #fff; padding: 6px 10px; font-size: 14px; max-width: 280px; }
+    .topbar input[type=text]::placeholder { color: rgba(255,255,255,0.4); }
+    .topbar input[type=text]:focus { outline: none; border-color: #a5b4fc; }
+    .topbar-actions { margin-left: auto; display: flex; gap: 8px; }
+    button { cursor: pointer; border: none; border-radius: 6px; padding: 7px 14px; font-size: 13px; }
+    .btn-save { background: rgba(255,255,255,0.15); color: #e0e7ff; }
+    .btn-save:hover { background: rgba(255,255,255,0.25); }
+    .btn-publish { background: #7c3aed; color: #fff; }
+    .btn-publish:hover { background: #6d28d9; }
+
+    /* Layout */
+    .workspace { display: flex; flex: 1; overflow: hidden; }
+
+    /* Sidebar */
+    .sidebar { width: 400px; flex-shrink: 0; background: #fff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; }
+    .sidebar-tabs { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; background: #fff; }
+    .sidebar-body { flex: 1; position: relative; overflow: hidden; }
+    .sidebar-panel { position: absolute; inset: 0; overflow-y: auto; transition: transform 0.22s ease, opacity 0.22s ease; background: #fff; padding-bottom: 12px; }
+    #panel-ops { transform: translateX(0); opacity: 1; pointer-events: all; }
+    #panel-edit { transform: translateX(100%); opacity: 0; pointer-events: none; }
+    .sidebar-body.editing #panel-ops { transform: translateX(-100%); opacity: 0; pointer-events: none; }
+    .sidebar-body.editing #panel-edit { transform: translateX(0); opacity: 1; pointer-events: all; }
+
+    /* Collapsible sections */
+    .sb-section { border-bottom: 1px solid #f3f4f6; }
+    .sb-section-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; }
+    .sb-label { font-size: 11px; text-transform: uppercase; color: #9ca3af; font-weight: 600; letter-spacing: 0.05em; }
+    .sb-section-content { padding: 0 16px 12px; }
+    .collapsible-header { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 10px 16px; font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; user-select: none; }
+    .collapsible-header:hover { background: #f9fafb; }
+    .collapsible-body { padding: 0 16px 12px; }
+    .goals-badge { background: #ede9fe; color: #5b21b6; border-radius: 8px; padding: 1px 6px; font-size: 10px; font-weight: 700; margin-left: 4px; }
+    .bottom-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; }
+    .action-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 5px 9px; background: #fff; color: #6b7280; font-size: 11px; font-weight: 600; line-height: 1; cursor: pointer; }
+    .action-chip:hover { background: #f9fafb; }
+    .qa-links-wrap { position: relative; }
+    .qa-popover { position: absolute; top: calc(100% + 6px); right: 0; min-width: 320px; max-width: 360px; max-height: 260px; overflow-y: auto; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; box-shadow: 0 12px 28px rgba(17,24,39,0.18); z-index: 20; display: none; }
+    .qa-popover.open { display: block; }
+
+    /* Targeting */
+    .target-toggle { display: flex; gap: 14px; font-size: 12px; padding: 6px 0 2px; }
+    .target-toggle label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .url-list-item { display: grid; grid-template-columns: minmax(0, 82px) minmax(0, 84px) minmax(0, 1fr) auto; gap: 4px; margin-bottom: 6px; align-items: center; }
+    .url-list-item input, .url-list-item select { min-width: 0; width: 100%; font-size: 12px; padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 5px; }
+    .url-list-item input:focus, .url-list-item select:focus { outline: none; border-color: #7c3aed; }
+    .btn-del-url { background: none; border: none; color: #9ca3af; font-size: 16px; padding: 2px 6px; line-height: 1; cursor: pointer; flex-shrink: 0; }
+    .btn-del-url:hover { color: #ef4444; }
+    .btn-add-url { font-size: 11px; color: #7c3aed; background: none; border: 1px dashed #c4b5fd; border-radius: 5px; width: 100%; padding: 5px; margin-top: 4px; cursor: pointer; }
+    .btn-add-url:hover { background: #faf5ff; }
+    .target-tip { font-size: 11px; color: #6b7280; margin-top: 8px; line-height: 1.4; }
+    .target-overlap-warning { margin-top: 8px; border: 1px solid #f59e0b; background: #fffbeb; color: #92400e; border-radius: 8px; padding: 8px 10px; font-size: 11px; line-height: 1.45; }
+    .target-overlap-warning strong { display: block; margin-bottom: 4px; font-size: 11px; }
+    .regex-helper { grid-column: 1 / -1; display: none; margin-top: 2px; padding: 8px 10px; border: 1px solid #e5e7eb; background: #fafafa; border-radius: 6px; }
+    .regex-helper-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .regex-helper-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; min-width: 46px; }
+    .regex-preset-select { flex: 1; min-width: 0; font-size: 11px; padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 5px; }
+    .regex-preset-select:focus { outline: none; border-color: #7c3aed; }
+    .regex-helper-note { font-size: 11px; color: #6b7280; line-height: 1.4; }
+    .regex-helper-status { margin-top: 4px; font-size: 11px; line-height: 1.4; }
+    .regex-helper-status-neutral { color: #6b7280; }
+    .regex-helper-status-ok { color: #065f46; }
+    .regex-helper-status-bad { color: #991b1b; }
+
+    /* Back button */
+    .btn-back { background: none; border: none; color: #7c3aed; font-size: 12px; padding: 4px 0; cursor: pointer; font-weight: 500; }
+    .btn-back:hover { color: #5b21b6; }
+    .edit-panel-header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #f3f4f6; flex-shrink: 0; }
+    .edit-panel-body { padding: 12px 16px; overflow-y: auto; }
+
+    /* Variant tabs */
+    .variant-tabs { display: flex; gap: 4px; margin-bottom: 0; }
+    .tab { flex: 1; padding: 6px; text-align: center; font-size: 12px; border-radius: 5px; cursor: pointer; border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280; }
+    .tab.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+
+    /* Operations */
+    .url-row { display: flex; gap: 6px; }
+    .url-row input { flex: 1; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 5px; font-size: 12px; }
+    .url-row input:focus { outline: none; border-color: #7c3aed; }
+    .btn-load { background: #7c3aed; color: #fff; font-size: 12px; padding: 6px 12px; white-space: nowrap; }
+    .btn-load:hover { background: #6d28d9; }
+    .ops-list { flex: 1; overflow-y: auto; }
+    .op-item { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; font-size: 12px; display: flex; align-items: flex-start; gap: 8px; }
+    .op-item .op-type-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #5b21b6; letter-spacing: 0.04em; margin-bottom: 2px; }
+    .op-item .op-desc { color: #374151; font-size: 12px; line-height: 1.4; }
+    .op-item .btn-remove-op { background: none; border: none; color: #9ca3af; font-size: 14px; padding: 2px; line-height: 1; cursor: pointer; }
+    .op-item .btn-remove-op:hover { color: #ef4444; }
+    .op-item .btn-edit-op { background: none; border: none; font-size: 13px; padding: 2px; line-height: 1; cursor: pointer; opacity: 0.5; }
+    .op-item .btn-edit-op:hover { opacity: 1; }
+    .empty-ops { color: #9ca3af; font-size: 12px; padding: 12px 0; text-align: center; }
+
+    /* Pick button */
+    .btn-pick { background: #ede9fe; color: #5b21b6; font-size: 13px; padding: 7px 14px; border-radius: 6px; }
+    .btn-pick.active { background: #7c3aed; color: #fff; }
+    .btn-pick:hover:not(.active) { background: #ddd6fe; }
+
+    /* Property panel fields */
+    .selector-display { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 4px 8px; word-break: break-all; flex: 1; }
+    .confidence-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 4px; }
+    .confidence-high { background: #d1fae5; color: #065f46; }
+    .confidence-medium { background: #fef3c7; color: #92400e; }
+    .confidence-low { background: #fee2e2; color: #991b1b; }
+    .selector-meta { padding: 10px 16px 0; display: flex; flex-direction: column; gap: 6px; }
+    .selector-breadcrumbs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .selector-crumb { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 999px; padding: 4px 8px; font-size: 11px; }
+    .selector-summary { font-size: 11px; color: #6b7280; line-height: 1.4; }
+    .html-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .btn-html-source { background: #f3f4f6; color: #374151; font-size: 11px; padding: 5px 9px; }
+    .btn-html-source:hover { background: #e5e7eb; }
+    .btn-upload-image { background: #f3f4f6; color: #374151; font-size: 11px; padding: 5px 9px; margin-top: 6px; }
+    .btn-upload-image:hover { background: #e5e7eb; }
+
+    select, textarea, .prop-input { width: 100%; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 5px; font-size: 12px; font-family: inherit; }
+    select:focus, textarea:focus, .prop-input:focus { outline: none; border-color: #7c3aed; }
+    textarea { resize: vertical; min-height: 60px; }
+    .field-label { font-size: 11px; font-weight: 500; color: #374151; margin-bottom: 4px; margin-top: 8px; display: block; }
+    .style-rows { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+    .style-row { display: flex; gap: 4px; }
+    .style-row input { flex: 1; }
+    .btn-add-style { background: #f3f4f6; color: #374151; font-size: 11px; padding: 4px 8px; width: 100%; margin-bottom: 6px; }
+
+    /* Visual style editor */
+    .vs-section { border: 1px solid #f3f4f6; border-radius: 6px; margin-top: 8px; overflow: hidden; }
+    .vs-section-header { background: #f9fafb; padding: 6px 10px; font-size: 11px; font-weight: 600; color: #374151; cursor: pointer; user-select: none; display: flex; justify-content: space-between; }
+    .vs-section-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+    .vs-row { display: flex; align-items: center; gap: 6px; }
+    .vs-label { font-size: 11px; color: #6b7280; min-width: 68px; }
+    .vs-color-wrap { display: flex; align-items: center; gap: 5px; flex: 1; }
+    .vs-color-input { width: 28px; height: 28px; padding: 0; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; background: none; }
+    .vs-hex { flex: 1; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 11px; font-family: monospace; }
+    .vs-small { width: 52px; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; text-align: center; }
+    .vs-select { flex: 1; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; }
+    .vs-align-group { display: flex; gap: 3px; }
+    .vs-align-btn { background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; padding: 3px 7px; font-size: 12px; cursor: pointer; color: #374151; }
+    .vs-align-btn.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+    .vs-4box { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 3px; flex: 1; }
+    .vs-4box input { padding: 3px 4px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 11px; text-align: center; }
+    .vs-radio-group { display: flex; gap: 10px; font-size: 12px; flex-wrap: wrap; }
+    .vs-radio-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .vs-tip { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+    .vs-img-preview { max-width: 100%; max-height: 80px; border-radius: 4px; margin-top: 4px; display: none; border: 1px solid #e5e7eb; }
+    .panel-actions { display: flex; gap: 6px; margin-top: 10px; }
+    .btn-preview { background: #f3f4f6; color: #374151; flex: 1; font-size: 12px; }
+    .btn-preview:hover { background: #e5e7eb; }
+    .btn-reset { background: none; border: 1px solid #e5e7eb; color: #9ca3af; font-size: 12px; padding: 6px; }
+    .btn-add-op { background: #7c3aed; color: #fff; flex: 1; font-size: 12px; }
+    .btn-add-op:hover { background: #6d28d9; }
+
+    /* Iframe */
+    .iframe-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .viewport-toolbar { background: #1e1b4b; padding: 6px 14px; display: flex; gap: 6px; align-items: center; flex-shrink: 0; border-top: 1px solid rgba(255,255,255,0.08); }
+    .viewport-toolbar span { font-size: 11px; color: rgba(255,255,255,0.4); margin-right: 2px; }
+    .viewport-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; padding: 4px 12px; font-size: 12px; color: #e0e7ff; cursor: pointer; }
+    .viewport-btn.active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+    .viewport-btn:hover:not(.active) { background: rgba(255,255,255,0.15); }
+    .iframe-wrap { flex: 1; position: relative; overflow: hidden; background: #1a1a2e; }
+    .iframe-wrap iframe { position: absolute; top: 0; left: 0; border: none; background: #fff; box-sizing: border-box; }
+    .iframe-wrap.mobile-view { background: #111827; }
+    .iframe-wrap.mobile-view iframe { border: 8px solid #1f2937; border-radius: 44px; box-shadow: 0 0 0 2px #374151, 0 24px 48px rgba(0,0,0,0.6); }
+    .iframe-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #9ca3af; gap: 8px; font-size: 14px; }
+    .iframe-placeholder.hidden { display: none; }
+
+    /* Status bar */
+    #status-bar { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #1e1b4b; color: #e0e7ff; padding: 6px 16px; border-radius: 20px; font-size: 12px; display: none; z-index: 9999; }
+
+    .radio-group { display: flex; gap: 12px; }
+    .radio-group label { display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
+    .btn-add-goal { background: #ede9fe; color: #5b21b6; border-radius: 5px; font-size: 11px; padding: 3px 8px; }
+    .btn-add-goal:hover { background: #ddd6fe; }
+    .goal-item { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 7px 10px; margin-bottom: 5px; font-size: 12px; display: flex; align-items: flex-start; gap: 6px; }
+    .goal-type-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 8px; flex-shrink: 0; }
+    .goal-type-click { background: #fef3c7; color: #92400e; }
+    .goal-type-pageview { background: #dbeafe; color: #1e40af; }
+    .goal-type-custom { background: #f3f4f6; color: #6b7280; }
+    .qa-link-row { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+    .qa-link-label { font-size:11px; color:#6b7280; min-width:60px; }
+    .qa-link-url { font-size:11px; color:#4f46e5; background:#eef2ff; border-radius:4px; padding:4px 6px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; border:none; text-align:left; }
+    .qa-link-url:hover { background:#e0e7ff; }
+    .qa-copy-btn { font-size:11px; padding:4px 8px; background:#e0e7ff; color:#4f46e5; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; }
+    .qa-copy-btn:hover { background:#c7d2fe; }
+    .qa-copy-btn.copied { background:#d1fae5; color:#065f46; }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <a href="/dashboard">← Back</a>
+  <input type="text" id="exp-name" placeholder="Experiment name" />
+  <div class="topbar-actions">
+    <button class="btn-save" id="btn-save">Save</button>
+    <button class="btn-publish" id="btn-publish">Publish</button>
+  </div>
+</div>
+
+<div class="workspace">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <!-- Variant tabs (always visible) -->
+    <div class="sidebar-tabs">
+      <div class="variant-tabs" id="variant-tabs"></div>
+    </div>
+
+    <!-- Two-panel sliding body -->
+    <div class="sidebar-body" id="sidebar-body">
+
+      <!-- Panel A: Ops (default) -->
+      <div class="sidebar-panel" id="panel-ops">
+
+        <!-- Targeting section -->
+        <div class="sb-section" id="targeting-section">
+          <div class="sb-section-header">
+            <span class="sb-label">Target</span>
+          </div>
+          <div class="sb-section-content">
+            <div class="target-toggle">
+              <label><input type="radio" name="target-scope" id="target-all" value="all" checked /> All pages</label>
+              <label><input type="radio" name="target-scope" id="target-specific" value="specific" /> Rule-based</label>
+            </div>
+            <div id="url-list" style="display:none;margin-top:8px;"></div>
+            <p class="target-tip">Use include and exclude rules. Wildcards are simple page patterns; regex now has presets for common URL shapes plus live preview matching.</p>
+            <div class="target-overlap-warning" id="target-overlap-warning" style="display:none"></div>
+          </div>
+        </div>
+
+        <!-- Preview URL section -->
+        <div class="sb-section" id="load-section">
+          <div class="sb-section-header">
+            <span class="sb-label">Load preview</span>
+          </div>
+          <div class="sb-section-content">
+            <div class="url-row">
+              <input type="text" id="preview-url" placeholder="http://localhost:4000/demo/" />
+              <button class="btn-load" id="btn-load">Load</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Operations section -->
+        <div class="sb-section">
+          <div class="sb-section-header">
+            <span class="sb-label">Operations</span>
+            <button class="btn-pick" id="btn-pick">+ Add</button>
+          </div>
+          <div class="sb-section-content">
+            <div id="ops-list"><p class="empty-ops">No operations yet</p></div>
+          </div>
+        </div>
+
+        <!-- Goals + QA quick actions -->
+        <div class="sb-section">
+          <div class="bottom-actions">
+            <button class="action-chip" id="goals-toggle" type="button">
+              <span>Goals</span>
+              <span class="goals-badge" id="goals-badge" style="display:none">0</span>
+            </button>
+            <div class="qa-links-wrap">
+              <button class="action-chip" id="qa-toggle" type="button">QA Links &#8599;</button>
+              <div class="qa-popover" id="qa-popover">
+                <div id="qa-links"><p class="empty-ops">Load a page first</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="collapsible-body" id="goals-body" style="display:none">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+              <button class="btn-add-goal" id="btn-add-goal" title="Add goal">+ Goal</button>
+            </div>
+            <div id="goals-list"><p class="empty-ops">No goals yet</p></div>
+
+            <!-- Goal form -->
+            <div id="goal-form" style="display:none;margin-top:10px;border-top:1px solid #f3f4f6;padding-top:10px">
+              <label class="field-label">Goal name</label>
+              <input type="text" class="prop-input" id="goal-name" placeholder="e.g. Signup click" />
+
+              <label class="field-label" style="margin-top:8px">Type</label>
+              <select id="goal-type" class="prop-input">
+                <option value="click">Click — fires when a CSS selector is clicked</option>
+                <option value="pageview">Pageview — fires when a URL is visited</option>
+                <option value="custom">Custom — you call trackConversion manually</option>
+              </select>
+
+              <div id="goal-type-fields" style="margin-top:6px"></div>
+
+              <div style="display:flex;gap:6px;margin-top:8px">
+                <button class="btn-add-op" id="btn-save-goal" style="flex:1;font-size:12px">Save Goal</button>
+                <button class="btn-preview" id="btn-cancel-goal" style="font-size:12px">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /panel-ops -->
+
+      <!-- Panel B: Property editor (slides in) -->
+      <div class="sidebar-panel" id="panel-edit">
+        <div class="edit-panel-header">
+          <button class="btn-back" id="btn-back-ops">← Operations</button>
+          <div class="selector-display" id="selector-display"></div>
+        </div>
+        <div class="selector-meta">
+          <div class="selector-summary" id="selector-summary">Pick an element to inspect its selector, attributes, and editable HTML.</div>
+          <div class="selector-breadcrumbs" id="selector-breadcrumbs"></div>
+        </div>
+        <div class="edit-panel-body">
+          <label class="field-label">Operation type</label>
+          <select id="op-type">
+            <optgroup label="Content">
+              <option value="set_text">Change Text</option>
+              <option value="replace_html">Replace HTML</option>
+              <option value="insert_html">Add New Element</option>
+            </optgroup>
+            <optgroup label="Appearance">
+              <option value="set_style">Change Style</option>
+              <option value="inject_css">Custom CSS</option>
+              <option value="modify_class">Add / Remove Class</option>
+            </optgroup>
+            <optgroup label="Visibility &amp; Links">
+              <option value="toggle_visibility">Show / Hide</option>
+              <option value="set_attribute_src">Change Image</option>
+              <option value="set_attribute_href">Change Link</option>
+            </optgroup>
+            <optgroup label="Layout">
+              <option value="move_before">Move Before</option>
+              <option value="move_after">Move After</option>
+              <option value="remove">Remove</option>
+            </optgroup>
+          </select>
+
+          <div id="op-fields"></div>
+
+          <div class="panel-actions" style="margin-top:8px">
+            <button class="btn-add-op" id="btn-add-op">Add Operation</button>
+            <button class="btn-reset" id="btn-reset" title="Reset preview">↺</button>
+          </div>
+        </div>
+      </div><!-- /panel-edit -->
+
+    </div><!-- /sidebar-body -->
+  </aside>
+
+  <!-- Iframe panel -->
+  <div class="iframe-panel">
+    <div class="viewport-toolbar">
+      <span>View:</span>
+      <button class="viewport-btn active" id="btn-viewport-desktop">🖥 Desktop</button>
+      <button class="viewport-btn" id="btn-viewport-mobile">📱 Mobile</button>
+    </div>
+    <div class="iframe-wrap" id="iframe-wrap">
+      <div class="iframe-placeholder" id="placeholder">
+        <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#d1d5db"><rect x="3" y="3" width="18" height="18" rx="2" stroke-width="1.5"/><path d="M3 9h18" stroke-width="1.5"/></svg>
+        <span>Enter a URL above and click Load</span>
+      </div>
+      <iframe id="target-frame" style="display:none"></iframe>
+    </div>
+  </div>
+</div>
+
+<div id="status-bar"></div>
+
+<!-- API Key Modal -->
+<div class="modal-backdrop" id="modal-key" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:none;align-items:center;justify-content:center">
+<style>#modal-key.open { display:flex !important; }</style>
+  <div style="background:#fff;border-radius:10px;padding:28px;width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+    <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">API Key Required</h2>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:16px">Set the same key as your server's <code>API_KEY</code> environment variable.</p>
+    <input type="text" id="inp-api-key" placeholder="your-secret-key" autocomplete="off"
+      style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:16px" />
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="btn-key-save" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:14px;cursor:pointer">Save</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { fetchExperiment, fetchExperiments, updateExperiment, sendToFrame, waitForMessage, requestFrameScreenshot, uploadExperimentSnapshot } from "./dashboard.js";
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let experiment = null;
+  let activeVariantIdx = 1; // default to Variant A
+  let pickedSelector = null;
+  let pickedContext = {};
+  let isPicking = false;
+  let editorReady = false;
+  let editingOpIndex = -1; // -1 = adding new, >=0 = editing existing
+  let viewportMode = "desktop";
+  let publishInProgress = false;
+
+  const frame = document.getElementById("target-frame");
+  const placeholder = document.getElementById("placeholder");
+
+  // ── Panel slide helpers ────────────────────────────────────────────────────
+  function closeQaPopover() { document.getElementById("qa-popover")?.classList.remove("open"); }
+  function showEditPanel() {
+    closeQaPopover();
+    document.getElementById("sidebar-body").classList.add("editing");
+  }
+  function showOpsPanel() { document.getElementById("sidebar-body").classList.remove("editing"); }
+
+  // ── Viewport scaling ───────────────────────────────────────────────────────
+  const VIEWPORT = { desktop: { w: 1280, h: 800 }, mobile: { w: 390, h: 844 } };
+  const CAPTURE_VIEWPORTS = [
+    { mode: "desktop", width: 1280, height: 800 },
+    { mode: "mobile", width: 390, height: 844 }
+  ];
+  function applyViewportScale() {
+    if (!frame || frame.style.display === "none") return;
+    const wrap = document.getElementById("iframe-wrap");
+    const { w, h } = VIEWPORT[viewportMode];
+    const frameChrome = viewportMode === "mobile" ? 16 : 0;
+    const frameW = w + frameChrome;
+    const frameH = h + frameChrome;
+    const wrapW = wrap.clientWidth || 800;
+    const wrapH = wrap.clientHeight || 600;
+    const scale = Math.min(wrapW / frameW, wrapH / frameH);
+    frame.style.width = frameW + "px";
+    frame.style.height = frameH + "px";
+    frame.style.transform = `scale(${scale})`;
+    frame.style.transformOrigin = "top left";
+    frame.style.marginLeft = Math.max(0, (wrapW - frameW * scale) / 2) + "px";
+    frame.style.marginTop = Math.max(0, (wrapH - frameH * scale) / 2) + "px";
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function normalizeTargeting(targeting = {}) {
+    const providedRules = Array.isArray(targeting.urlRules) ? targeting.urlRules : [];
+    const legacyPatterns = Array.isArray(targeting.urlPatterns) ? targeting.urlPatterns : [];
+    const urlRules = (providedRules.length ? providedRules : legacyPatterns.map(pattern => ({
+      include: true,
+      matchType: "wildcard",
+      pattern
+    })))
+      .map(rule => ({
+        include: rule.include !== false,
+        matchType: rule.matchType === "regex" ? "regex" : "wildcard",
+        pattern: String(rule.pattern ?? "").trim() || "*"
+      }));
+
+    if (!urlRules.length) {
+      urlRules.push({ include: true, matchType: "wildcard", pattern: "*" });
+    }
+
+    return {
+      urlPatterns: urlRules.filter(rule => rule.include && rule.matchType === "wildcard").map(rule => rule.pattern),
+      urlRules
+    };
+  }
+
+  function normalizeUrlForMatch(pageUrl) {
+    try {
+      const parsed = new URL(pageUrl);
+      return `${parsed.origin}${parsed.pathname}`;
+    } catch {
+      return pageUrl;
+    }
+  }
+
+  function wildcardToRegex(pattern) {
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`^${escaped.replace(/\*/g, ".*")}$`);
+  }
+
+  function escapeRegexLiteral(value) {
+    return value.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function getPreviewUrlValue() {
+    return document.getElementById("preview-url")?.value.trim() ?? "";
+  }
+
+  function normalizePreviewUrlForRegex(pageUrl) {
+    try {
+      const parsed = new URL(pageUrl);
+      return `${parsed.origin}${parsed.pathname}`;
+    } catch {
+      return pageUrl.trim();
+    }
+  }
+
+  function resolveRegexSampleUrl(pattern = "") {
+    const previewUrl = getPreviewUrlValue();
+    if (previewUrl) {
+      return previewUrl;
+    }
+    const trimmed = pattern.trim();
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed;
+    }
+    return "";
+  }
+
+  function buildRegexPresetPattern(preset, sampleUrl) {
+    if (!sampleUrl) {
+      return "";
+    }
+
+    try {
+      const parsed = new URL(sampleUrl);
+      const origin = escapeRegexLiteral(parsed.origin);
+      const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+      const escapedPath = escapeRegexLiteral(pathname);
+
+      switch (preset) {
+        case "homepage":
+          return `^${origin}/?$`;
+        case "exact-url":
+        case "ignore-query-hash":
+          return pathname === "/"
+            ? `^${origin}/?$`
+            : `^${origin}${escapedPath}/?$`;
+        case "starts-with-path":
+          return pathname === "/"
+            ? `^${origin}(?:/.*)?$`
+            : `^${origin}${escapedPath}(?:/.*)?$`;
+        case "article-pattern": {
+          const segments = pathname.split("/").filter(Boolean);
+          if (segments.length < 2) {
+            return pathname === "/"
+              ? `^${origin}/?$`
+              : `^${origin}${escapedPath}/?$`;
+          }
+          const section = `/${segments.slice(0, -1).join("/")}`;
+          return `^${origin}${escapeRegexLiteral(section)}/[^/]+/?$`;
+        }
+        default:
+          return "";
+      }
+    } catch {
+      return "";
+    }
+  }
+
+  function getRegexPresetHelp(preset) {
+    switch (preset) {
+      case "exact-url":
+        return "Exact page match. Query strings and hashes are ignored by matching.";
+      case "starts-with-path":
+        return "Matches this section and anything below it.";
+      case "article-pattern":
+        return "Matches the current section with any slug at the end.";
+      case "ignore-query-hash":
+        return "Matches the page even if ?utm= or #hash changes.";
+      case "homepage":
+        return "Matches only the homepage / root page.";
+      default:
+        return "Choose a preset or write your own regex.";
+    }
+  }
+
+  function describeRegexPreview(pattern, sampleUrl) {
+    if (!pattern.trim()) {
+      return {
+        state: "neutral",
+        message: sampleUrl
+          ? "Choose a preset or type a regex to test it against the current preview URL."
+          : "Load a page first to test this regex against the current preview URL."
+      };
+    }
+
+    if (!sampleUrl) {
+      return {
+        state: "neutral",
+        message: "Load a page first so we can test this regex against the current preview URL."
+      };
+    }
+
+    try {
+      const regex = new RegExp(pattern);
+      const rawMatch = regex.test(sampleUrl);
+      const cleanUrl = normalizePreviewUrlForRegex(sampleUrl);
+      const cleanMatch = cleanUrl !== sampleUrl && regex.test(cleanUrl);
+      const matched = rawMatch || cleanMatch;
+      return {
+        state: matched ? "ok" : "bad",
+        message: matched
+          ? `Matches the current preview URL${cleanMatch && !rawMatch ? " after removing query/hash" : ""}.`
+          : "Does not match the current preview URL."
+      };
+    } catch {
+      return {
+        state: "bad",
+        message: "Invalid regex. Pick a preset or fix the pattern."
+      };
+    }
+  }
+
+  function refreshRegexHelpers() {
+    const sampleUrl = getPreviewUrlValue();
+    document.querySelectorAll("#url-list .url-list-item").forEach((row, index) => {
+      const matchType = row.querySelector(`[data-url-match="${index}"]`)?.value ?? "wildcard";
+      const helper = row.querySelector(`[data-regex-helper="${index}"]`);
+      const preset = row.querySelector(`[data-regex-preset="${index}"]`);
+      const pattern = row.querySelector(`[data-url-pattern="${index}"]`)?.value?.trim() ?? "";
+
+      if (helper) {
+        helper.style.display = matchType === "regex" ? "block" : "none";
+      }
+
+      if (preset && matchType === "regex") {
+        const note = row.querySelector(`[data-regex-note="${index}"]`);
+        const status = row.querySelector(`[data-regex-status="${index}"]`);
+        if (note) {
+          note.textContent = getRegexPresetHelp(preset.value);
+        }
+        if (status) {
+          const preview = describeRegexPreview(pattern, sampleUrl);
+          status.textContent = preview.message;
+          status.className = `regex-helper-status regex-helper-status-${preview.state}`;
+        }
+      }
+    });
+  }
+
+  function matchesUrlRule(pageUrl, rule) {
+    const cleanUrl = normalizeUrlForMatch(pageUrl);
+
+    if (rule.matchType === "regex") {
+      try {
+        const regex = new RegExp(rule.pattern);
+        return regex.test(pageUrl) || regex.test(cleanUrl);
+      } catch {
+        return false;
+      }
+    }
+
+    if (rule.pattern === "*") {
+      return true;
+    }
+
+    const regex = wildcardToRegex(rule.pattern);
+    return regex.test(pageUrl) || regex.test(cleanUrl);
+  }
+
+  function targetingsOverlap(aTargeting, bTargeting) {
+    const a = normalizeTargeting(aTargeting).urlRules;
+    const b = normalizeTargeting(bTargeting).urlRules;
+    const sampleUrls = [
+      ...a.filter(rule => rule.include && rule.matchType === "wildcard" && !rule.pattern.includes("*")).map(rule => rule.pattern),
+      ...b.filter(rule => rule.include && rule.matchType === "wildcard" && !rule.pattern.includes("*")).map(rule => rule.pattern)
+    ];
+
+    if (!sampleUrls.length) {
+      return a.some(rule => rule.include && rule.matchType === "wildcard" && rule.pattern === "*")
+        || b.some(rule => rule.include && rule.matchType === "wildcard" && rule.pattern === "*")
+        || a.some(ruleA => ruleA.include && b.some(ruleB => ruleB.include && ruleA.matchType === ruleB.matchType && ruleA.pattern === ruleB.pattern));
+    }
+
+    return sampleUrls.some((url) => {
+      const aMatch = a.filter(rule => rule.include).some(rule => matchesUrlRule(url, rule))
+        && !a.filter(rule => !rule.include).some(rule => matchesUrlRule(url, rule));
+      const bMatch = b.filter(rule => rule.include).some(rule => matchesUrlRule(url, rule))
+        && !b.filter(rule => !rule.include).some(rule => matchesUrlRule(url, rule));
+      return aMatch && bMatch;
+    });
+  }
+
+  function renderSelectionMeta(context = {}) {
+    const summary = document.getElementById("selector-summary");
+    const breadcrumbs = document.getElementById("selector-breadcrumbs");
+    const attrs = Object.entries(context.attributes ?? {}).filter(([, value]) => value);
+    const attrSummary = attrs.length
+      ? attrs.map(([key, value]) => `${key}=${String(value).slice(0, 32)}`).join(" | ")
+      : "No URL or image attributes on this element";
+
+    summary.textContent = context.tagName
+      ? `${context.tagName.toUpperCase()} | ${attrSummary}`
+      : "Pick an element to inspect its selector, attributes, and editable HTML.";
+
+    breadcrumbs.innerHTML = (context.ancestors ?? []).map((ancestor) => `
+      <button type="button" class="selector-crumb" data-crumb-selector="${escapeHtml(ancestor.selector)}">${escapeHtml(ancestor.label)}</button>
+    `).join("");
+
+    breadcrumbs.querySelectorAll("[data-crumb-selector]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        pickedSelector = btn.dataset.crumbSelector;
+        const display = document.getElementById("selector-display");
+        display.innerHTML = `<code>${pickedSelector}</code>`;
+      });
+    });
+  }
+
+  function validateTargeting(targeting) {
+    const rules = normalizeTargeting(targeting).urlRules;
+    if (!rules.some(rule => rule.include)) {
+      return "Add at least one include targeting rule.";
+    }
+
+    for (const rule of rules) {
+      if (rule.matchType === "regex") {
+        try {
+          new RegExp(rule.pattern);
+        } catch {
+          return `Invalid regex targeting rule: ${rule.pattern}`;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function validateHtmlMarkup(markup) {
+    const trimmed = markup.trim();
+    if (!trimmed) {
+      return "HTML cannot be empty.";
+    }
+
+    const template = document.createElement("template");
+    template.innerHTML = trimmed;
+    if (!template.content.childNodes.length) {
+      return "HTML did not produce any nodes.";
+    }
+
+    return null;
+  }
+
+  function validateDraftOperation(op) {
+    if (!op) {
+      return "Select an operation before saving.";
+    }
+
+    if ((op.type === "replace_html" || op.type === "insert_html")) {
+      return validateHtmlMarkup(op.html ?? "");
+    }
+
+    if ((op.type === "move_before" || op.type === "move_after") && !op.targetSelector?.trim()) {
+      return "Enter a target selector for the move operation.";
+    }
+
+    if (op.type === "set_attribute" && !op.value?.trim()) {
+      return "Enter a value for the selected attribute.";
+    }
+
+    return null;
+  }
+
+  function setViewportMode(mode) {
+    viewportMode = mode;
+    const desktopBtn = document.getElementById("btn-viewport-desktop");
+    const mobileBtn = document.getElementById("btn-viewport-mobile");
+    const wrap = document.getElementById("iframe-wrap");
+    if (mode === "mobile") {
+      mobileBtn.classList.add("active");
+      desktopBtn.classList.remove("active");
+      wrap.classList.add("mobile-view");
+    } else {
+      desktopBtn.classList.add("active");
+      mobileBtn.classList.remove("active");
+      wrap.classList.remove("mobile-view");
+    }
+    applyViewportScale();
+  }
+
+  let previewBootState = { stage: "", detail: "" };
+
+  function describePreviewBootState() {
+    if (!previewBootState.stage) return "";
+    return previewBootState.detail ? `${previewBootState.stage} (${previewBootState.detail})` : previewBootState.stage;
+  }
+
+  function showPreviewInitFailure(error) {
+    const detail = error instanceof Error ? error.message : String(error ?? "");
+    const bootState = describePreviewBootState();
+    frame.style.display = "none";
+    placeholder.classList.remove("hidden");
+    placeholder.innerHTML = `
+      <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#f59e0b"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span style="color:#92400e;font-weight:600">Preview could not initialize</span>
+      <span style="color:#6b7280;font-size:12px;text-align:center;max-width:320px">
+        ${detail ? `Editor startup failed: ${escapeHtml(detail)}` : "The page may block the editor iframe, or the editor bridge may have timed out."}
+        ${bootState ? `<span style="display:block;margin-top:4px;color:#4b5563">Last boot signal: ${escapeHtml(bootState)}</span>` : ""}
+        Enter CSS selectors manually in the property panel below, then use
+        <strong>Preview via QA mode</strong> to test on the real page.
+      </span>
+      <a href="https://developer.chrome.com/docs/devtools/css/reference/#select" target="_blank"
+         style="font-size:12px;color:#6366f1;margin-top:4px">How to find a CSS selector →</a>
+    `;
+    editorReady = false;
+  }
+
+  function waitForEditorBoot(timeoutMs = 12000) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        window.removeEventListener("message", handler);
+        reject(new Error("Timeout waiting for editor bridge to initialize"));
+      }, timeoutMs);
+
+      function cleanup() {
+        clearTimeout(timer);
+        window.removeEventListener("message", handler);
+      }
+
+      function handler(event) {
+        const msg = event.data;
+        if (!msg || typeof msg.type !== "string") return;
+        if (msg.type === "EDITOR_BOOT") {
+          previewBootState = {
+            stage: String(msg.stage ?? ""),
+            detail: String(msg.detail ?? "")
+          };
+          return;
+        }
+        if (msg.type === "EDITOR_READY") {
+          cleanup();
+          resolve(msg);
+          return;
+        }
+        if (msg.type === "EDITOR_ERROR") {
+          previewBootState = {
+            stage: `error:${String(msg.phase ?? "runtime")}`,
+            detail: String(msg.message ?? "")
+          };
+          cleanup();
+          reject(new Error(msg.message || "Editor bridge reported an error"));
+        }
+      }
+
+      window.addEventListener("message", handler);
+    });
+  }
+
+  async function loadPreviewUrl(url, options = {}) {
+    if (!url) return;
+    previewBootState = { stage: "", detail: "" };
+    const readyWait = options.waitForReady ? waitForEditorBoot(12000) : null;
+    editorReady = false;
+    placeholder.classList.add("hidden");
+    frame.style.display = "block";
+    frame.src = "/proxy?url=" + encodeURIComponent(url);
+    applyViewportScale();
+    renderQaLinks();
+    if (readyWait) {
+      await readyWait;
+      await sleep(80);
+    }
+    refreshRegexHelpers();
+  }
+
+  async function refreshPreviewForViewport(mode) {
+    const currentUrl = document.getElementById("preview-url").value.trim();
+    const modeChanged = viewportMode !== mode;
+    setViewportMode(mode);
+    if (!modeChanged || !currentUrl || frame.style.display === "none") return;
+    restoreSavedPreview();
+    try {
+      await loadPreviewUrl(currentUrl, { waitForReady: true });
+    } catch (error) {
+      showPreviewInitFailure(error);
+    }
+  }
+
+  function renderVariantPreview(variant) {
+    if (!editorReady) return;
+    sendToFrame(frame, { type: "RESET_PREVIEW" });
+    if (variant && !variant.isControl) {
+      variant.operations.forEach(o => sendToFrame(frame, { type: "PREVIEW_OPERATION", operation: o }));
+    }
+  }
+
+  function renderActiveVariantPreview() {
+    renderVariantPreview(activeVariant());
+  }
+
+  function restoreSavedPreview() {
+    clearTimeout(previewTimer);
+    if (!editorReady) return;
+    renderActiveVariantPreview();
+  }
+
+  async function autoOpenPreviewUrlIfNeeded() {
+    if (previewAutoOpened) return;
+    const url = document.getElementById("preview-url").value.trim();
+    if (!url) return;
+    previewAutoOpened = true;
+    try {
+      await loadPreviewUrl(url, { waitForReady: true });
+    } catch (error) {
+      showPreviewInitFailure(error);
+    }
+  }
+
+  async function refreshTargetingOverlapWarning() {
+    const warning = document.getElementById("target-overlap-warning");
+    if (!warning || !experiment) return;
+
+    let allExperiments = [];
+    try {
+      allExperiments = await fetchExperiments();
+    } catch {
+      warning.style.display = "none";
+      warning.innerHTML = "";
+      return;
+    }
+
+    const overlaps = allExperiments.filter(other =>
+      other.id !== experiment.id &&
+      other.status === "active" &&
+      targetingsOverlap(buildTargeting(), other.targeting)
+    );
+
+    if (!overlaps.length) {
+      warning.style.display = "none";
+      warning.innerHTML = "";
+      return;
+    }
+
+    warning.innerHTML = `
+      <strong>Other active experiments target this page</strong>
+      <div style="margin-bottom:4px">This experiment overlaps with ${overlaps.length} live experiment${overlaps.length === 1 ? "" : "s"}.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${overlaps.map(item => `<span style="display:inline-block;background:#fff7ed;border:1px solid #fdba74;border-radius:999px;padding:2px 8px;font-size:10px;color:#9a3412">${escapeHtml(item.name)}</span>`).join("")}
+      </div>
+      <div style="margin-top:4px">This is a warning only. It does not add anything to the operations list.</div>
+    `;
+    warning.style.display = "block";
+  }
+
+  function scheduleTargetingOverlapWarningRefresh() {
+    clearTimeout(targetingOverlapTimer);
+    targetingOverlapTimer = setTimeout(() => {
+      refreshTargetingOverlapWarning();
+    }, 200);
+  }
+
+  async function ensureEditorReadyInFrame() {
+    const existing = frame.contentDocument?.querySelector('script[src$="/dist/sdk-editor.iife.js"]');
+    const readyWait = waitForEditorBoot(12000);
+
+    if (!existing) {
+      const script = frame.contentDocument.createElement("script");
+      script.src = window.location.origin + "/dist/sdk-editor.iife.js";
+      frame.contentDocument.head.appendChild(script);
+    } else {
+      sendToFrame(frame, { type: "PING" });
+    }
+
+    return readyWait;
+  }
+
+  async function captureSnapshotsForPublish() {
+    if (!editorReady || frame.style.display === "none") {
+      return { captured: 0, failed: 0, skipped: experiment.variants.length * CAPTURE_VIEWPORTS.length };
+    }
+
+    const originalVariantIdx = activeVariantIdx;
+    const originalViewport = viewportMode;
+    let captured = 0;
+    let failed = 0;
+
+    try {
+      for (let idx = 0; idx < experiment.variants.length; idx += 1) {
+        const variant = experiment.variants[idx];
+        activeVariantIdx = idx;
+        renderVariantTabs();
+        renderOps();
+        renderVariantPreview(variant);
+        await sleep(220);
+
+        for (const viewport of CAPTURE_VIEWPORTS) {
+          setViewportMode(viewport.mode);
+          const currentUrl = document.getElementById("preview-url").value.trim();
+          if (currentUrl) {
+            await loadPreviewUrl(currentUrl, { waitForReady: true });
+          } else {
+            await sleep(160);
+          }
+
+          const requestId = `snap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          try {
+            const capture = await requestFrameScreenshot(frame, {
+              requestId,
+              viewport: viewport.mode,
+              width: viewport.width,
+              height: viewport.height,
+              timeoutMs: 24000
+            });
+            const upload = await uploadExperimentSnapshot(expId, {
+              variantId: variant.id,
+              viewport: viewport.mode,
+              imageDataUrl: capture.dataUrl,
+              width: viewport.width,
+              height: viewport.height
+            });
+            variant.previewScreenshots = {
+              ...(variant.previewScreenshots ?? {}),
+              [viewport.mode]: upload.snapshot
+            };
+            captured += 1;
+          } catch (error) {
+            failed += 1;
+            console.warn("[editor] snapshot capture failed", variant.id, viewport.mode, error);
+          }
+        }
+      }
+    } finally {
+      activeVariantIdx = originalVariantIdx;
+      renderVariantTabs();
+      renderOps();
+      setViewportMode(originalViewport);
+      renderActiveVariantPreview();
+    }
+
+    return { captured, failed, skipped: 0 };
+  }
+
+  // ── URL Targeting ──────────────────────────────────────────────────────────
+  function renderUrlTargeting() {
+    const rules = normalizeTargeting(experiment.targeting).urlRules;
+    const isAll = rules.length === 1 && rules[0].include && rules[0].matchType === "wildcard" && rules[0].pattern === "*";
+    document.getElementById("target-all").checked = isAll;
+    document.getElementById("target-specific").checked = !isAll;
+    const listEl = document.getElementById("url-list");
+    listEl.style.display = isAll ? "none" : "block";
+    renderUrlPatternInputs(isAll ? [] : rules);
+    const previewRule = rules.find(rule => rule.include && rule.matchType === "wildcard" && rule.pattern !== "*" && !rule.pattern.includes("*"));
+    document.getElementById("preview-url").value = !isAll && previewRule ? previewRule.pattern : "";
+    refreshRegexHelpers();
+  }
+
+  function renderUrlPatternInputs(rules) {
+    const listEl = document.getElementById("url-list");
+    listEl.innerHTML = rules.map((rule, i) => `
+      <div class="url-list-item">
+        <select data-url-include="${i}">
+          <option value="include" ${rule.include ? "selected" : ""}>Include</option>
+          <option value="exclude" ${rule.include ? "" : "selected"}>Exclude</option>
+        </select>
+        <select data-url-match="${i}">
+          <option value="wildcard" ${rule.matchType === "wildcard" ? "selected" : ""}>Wildcard</option>
+          <option value="regex" ${rule.matchType === "regex" ? "selected" : ""}>Regex</option>
+        </select>
+        <input type="text" value="${escapeHtml(rule.pattern)}" placeholder="https://example.com/page or ^https://..." data-url-pattern="${i}" />
+        <button class="btn-del-url" data-del-url="${i}" title="Remove">&times;</button>
+        <div class="regex-helper" data-regex-helper="${i}" style="display:${rule.matchType === "regex" ? "block" : "none"}">
+          <div class="regex-helper-row">
+            <span class="regex-helper-label">Preset</span>
+            <select class="regex-preset-select" data-regex-preset="${i}">
+              <option value="custom">Custom regex</option>
+              <option value="exact-url">Exact URL</option>
+              <option value="starts-with-path">Starts with path</option>
+              <option value="article-pattern">Article pattern</option>
+              <option value="ignore-query-hash">Ignore query/hash</option>
+              <option value="homepage">Homepage / root</option>
+            </select>
+          </div>
+          <div class="regex-helper-note" data-regex-note="${i}">${getRegexPresetHelp("custom")}</div>
+          <div class="regex-helper-status regex-helper-status-neutral" data-regex-status="${i}">Choose a preset or type a regex to test it against the current preview URL.</div>
+        </div>
+      </div>
+    `).join("") + `<button class="btn-add-url" id="btn-add-url">+ Add targeting rule</button>`;
+
+    listEl.querySelectorAll("[data-del-url]").forEach(btn => btn.addEventListener("click", () => {
+      const vals = collectUrlRulesFromDom();
+      vals.splice(parseInt(btn.dataset.delUrl), 1);
+      renderUrlPatternInputs(vals);
+    }));
+    listEl.querySelectorAll("[data-url-match]").forEach(select => {
+      select.addEventListener("change", () => {
+        const idx = parseInt(select.dataset.urlMatch);
+        const patternInput = listEl.querySelector(`[data-url-pattern="${idx}"]`);
+        if (select.value === "regex" && patternInput && !patternInput.value.trim()) {
+          const generated = buildRegexPresetPattern("exact-url", resolveRegexSampleUrl(patternInput.value));
+          if (generated) {
+            patternInput.value = generated;
+          }
+        }
+        refreshRegexHelpers();
+      });
+    });
+    listEl.querySelectorAll("[data-regex-preset]").forEach(select => select.addEventListener("change", () => {
+      const idx = parseInt(select.dataset.regexPreset);
+      const patternInput = listEl.querySelector(`[data-url-pattern="${idx}"]`);
+      if (!patternInput) {
+        return;
+      }
+      const generated = buildRegexPresetPattern(select.value, resolveRegexSampleUrl(patternInput.value));
+      if (generated) {
+        patternInput.value = generated;
+      }
+      refreshRegexHelpers();
+    }));
+    listEl.querySelectorAll("input[data-url-pattern]").forEach(input => input.addEventListener("input", refreshRegexHelpers));
+    document.getElementById("btn-add-url")?.addEventListener("click", () => {
+      const vals = collectUrlRulesFromDom();
+      vals.push({ include: true, matchType: "wildcard", pattern: "" });
+      renderUrlPatternInputs(vals);
+      listEl.querySelectorAll("input[data-url-pattern]").item(vals.length - 1)?.focus();
+    });
+    refreshRegexHelpers();
+  }
+
+  function collectUrlRulesFromDom() {
+    return Array.from(document.querySelectorAll("#url-list .url-list-item")).map((row, index) => ({
+      include: (row.querySelector(`[data-url-include="${index}"]`)?.value ?? "include") === "include",
+      matchType: row.querySelector(`[data-url-match="${index}"]`)?.value === "regex" ? "regex" : "wildcard",
+      pattern: row.querySelector(`[data-url-pattern="${index}"]`)?.value?.trim() ?? ""
+    })).filter(rule => rule.pattern);
+  }
+
+  function buildTargeting() {
+    const isAll = document.getElementById("target-all").checked;
+    if (isAll) return normalizeTargeting({ urlPatterns: ["*"] });
+    return normalizeTargeting({ urlRules: collectUrlRulesFromDom() });
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  const params = new URLSearchParams(location.search);
+  const expId = params.get("id");
+  if (!expId) { location.href = "/dashboard"; }
+
+  fetchExperiment(expId).then(exp => {
+    experiment = exp;
+    document.getElementById("exp-name").value = exp.name;
+    renderVariantTabs();
+    renderOps();
+    renderGoals();
+    renderUrlTargeting();
+    renderQaLinks();
+    autoOpenPreviewUrlIfNeeded();
+    refreshTargetingOverlapWarning();
+  }).catch(() => {
+    showStatus("Failed to load experiment", 3000);
+  });
+
+  // ── Variant tabs ───────────────────────────────────────────────────────────
+  function renderVariantTabs() {
+    const container = document.getElementById("variant-tabs");
+    container.innerHTML = experiment.variants.map((v, i) => `
+      <div class="tab ${i === activeVariantIdx ? "active" : ""}" data-idx="${i}">${v.name}</div>
+    `).join("");
+    container.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        activeVariantIdx = parseInt(tab.dataset.idx);
+        renderVariantTabs();
+        renderOps();
+        cancelEdit();
+      });
+    });
+  }
+
+  function activeVariant() {
+    return experiment?.variants[activeVariantIdx];
+  }
+
+  // ── Operations list ────────────────────────────────────────────────────────
+  function renderOps() {
+    const list = document.getElementById("ops-list");
+    const ops = activeVariant()?.operations ?? [];
+    if (!ops.length) {
+      list.innerHTML = '<p class="empty-ops">No operations yet</p>';
+      return;
+    }
+    list.innerHTML = ops.map((op, i) => `
+      <div class="op-item" data-idx="${i}">
+        <div style="flex:1;min-width:0">
+          <div class="op-type-label">${opTypeLabel(op.type)}</div>
+          <div class="op-desc">${opDescription(op)}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="btn-edit-op" data-edit="${i}" title="Edit">✏️</button>
+          <button class="btn-remove-op" data-del="${i}" title="Delete">×</button>
+        </div>
+      </div>
+    `).join("");
+
+    list.querySelectorAll("[data-del]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const deletedIndex = parseInt(btn.dataset.del);
+        activeVariant().operations.splice(deletedIndex, 1);
+
+        if (editingOpIndex === deletedIndex) {
+          cancelEdit();
+          renderOps();
+          return;
+        }
+
+        if (editingOpIndex > deletedIndex) {
+          editingOpIndex -= 1;
+        }
+
+        renderOps();
+        restoreSavedPreview();
+      });
+    });
+
+    list.querySelectorAll("[data-edit]").forEach(btn => {
+      btn.addEventListener("click", () => loadOpIntoPanel(parseInt(btn.dataset.edit)));
+    });
+  }
+
+  function cancelEdit() {
+    editingOpIndex = -1;
+    document.getElementById("btn-add-op").textContent = "Add Operation";
+    pickedSelector = null;
+    pickedContext = {};
+    document.getElementById("selector-display").innerHTML = "";
+    renderSelectionMeta({});
+    restoreSavedPreview();
+    showOpsPanel();
+  }
+
+  function loadOpIntoPanel(idx) {
+    const op = activeVariant().operations[idx];
+    if (!op) return;
+    restoreSavedPreview();
+    editingOpIndex = idx;
+
+    // Set selector display
+    const selector = "selector" in op ? op.selector : "sourceSelector" in op ? op.sourceSelector : "";
+    pickedSelector = selector || null;
+    const display = document.getElementById("selector-display");
+    if (selector) {
+      display.innerHTML = `<code>${selector}</code>`;
+    } else {
+      display.innerHTML = `<span style="color:#9ca3af;font-style:italic">No element selector</span>`;
+    }
+    renderSelectionMeta({
+      ...pickedContext,
+      selector,
+      attributes: pickedContext.attributes ?? {},
+      ancestors: pickedContext.ancestors ?? []
+    });
+
+    // Set type dropdown (set_attribute maps to two separate dropdown options)
+    if (op.type === "set_attribute") {
+      opTypeSelect.value = op.attribute === "src" ? "set_attribute_src" : "set_attribute_href";
+    } else {
+      opTypeSelect.value = op.type;
+    }
+
+    // Render fields then fill values
+    renderOpFields({});
+    fillOpFields(op);
+
+    document.getElementById("btn-add-op").textContent = "Update Operation";
+    showEditPanel();
+  }
+
+  function fillOpFields(op) {
+    switch (op.type) {
+      case "set_text":
+        document.getElementById("f-text").value = op.text ?? "";
+        break;
+      case "set_style": {
+        const sm = op.styleMap ?? {};
+        // Text color
+        if (sm.color) {
+          const el = document.getElementById("vs-color");
+          const hex = document.getElementById("vs-color-hex");
+          if (el) el.value = sm.color;
+          if (hex) hex.value = sm.color;
+        }
+        // Background
+        if (sm["background-color"]) {
+          document.querySelector('input[name="bg-type"][value="solid"]').checked = true;
+          document.getElementById("bg-solid-row").style.display = "flex";
+          document.getElementById("vs-bg").value = sm["background-color"];
+          document.getElementById("vs-bg-hex").value = sm["background-color"];
+        } else if (sm.background?.startsWith("linear-gradient")) {
+          document.querySelector('input[name="bg-type"][value="gradient"]').checked = true;
+          document.getElementById("bg-gradient-rows").style.display = "block";
+          const m = sm.background.match(/linear-gradient\(([^,]+),\s*(#[0-9a-fA-F]{6}),\s*(#[0-9a-fA-F]{6})\)/);
+          if (m) {
+            document.getElementById("vs-grad-dir").value = m[1].trim();
+            document.getElementById("vs-grad-from").value = m[2];
+            document.getElementById("vs-grad-from-hex").value = m[2];
+            document.getElementById("vs-grad-to").value = m[3];
+            document.getElementById("vs-grad-to-hex").value = m[3];
+          }
+        }
+        // SVG fill / stroke
+        if (sm["fill"]) { document.getElementById("vs-fill").value = sm["fill"]; document.getElementById("vs-fill-hex").value = sm["fill"]; }
+        if (sm["stroke"]) { document.getElementById("vs-stroke").value = sm["stroke"]; document.getElementById("vs-stroke-hex").value = sm["stroke"]; }
+        // Font
+        if (sm["font-family"]) document.getElementById("vs-font").value = sm["font-family"];
+        if (sm["font-size"]) document.getElementById("vs-size").value = parseInt(sm["font-size"]) || "";
+        if (sm["font-weight"]) document.getElementById("vs-weight").value = sm["font-weight"];
+        if (sm["text-align"]) {
+          document.querySelectorAll(".vs-align-btn").forEach(b => {
+            if (b.dataset.align === sm["text-align"]) b.classList.add("active");
+          });
+        }
+        if (sm["line-height"]) document.getElementById("vs-lh").value = sm["line-height"];
+        // Spacing
+        if (sm.padding) {
+          const parts = sm.padding.split(" ").map(p => parseInt(p) || 0);
+          document.getElementById("vs-pt").value = parts[0] ?? "";
+          document.getElementById("vs-pr").value = parts[1] ?? "";
+          document.getElementById("vs-pb").value = parts[2] ?? "";
+          document.getElementById("vs-pl").value = parts[3] ?? "";
+        }
+        if (sm.margin) {
+          const parts = sm.margin.split(" ").map(p => parseInt(p) || 0);
+          document.getElementById("vs-mt").value = parts[0] ?? "";
+          document.getElementById("vs-mr").value = parts[1] ?? "";
+          document.getElementById("vs-mb").value = parts[2] ?? "";
+          document.getElementById("vs-ml").value = parts[3] ?? "";
+        }
+        // Border
+        if (sm["border-radius"]) document.getElementById("vs-radius").value = parseInt(sm["border-radius"]) || "";
+        if (sm.border) {
+          const bm = sm.border.match(/^(\d+)px\s+(\w+)\s+(#[0-9a-fA-F]{6})$/);
+          if (bm) {
+            document.getElementById("vs-bw").value = bm[1];
+            document.getElementById("vs-bs").value = bm[2];
+            document.getElementById("vs-bc").value = bm[3];
+            document.getElementById("vs-bc-hex").value = bm[3];
+          }
+        }
+        break;
+      }
+      case "replace_html":
+        document.getElementById("f-html").value = op.html ?? "";
+        document.querySelector(`input[name="position"][value="${op.position}"]`).checked = true;
+        break;
+      case "insert_html": {
+        document.getElementById("f-insert-html").value = op.html ?? "";
+        const posRadio = document.querySelector(`input[name="insert-pos"][value="${op.position ?? "after"}"]`);
+        if (posRadio) posRadio.checked = true;
+        break;
+      }
+      case "toggle_visibility": {
+        const visRadio = document.querySelector(`input[name="vis-action"][value="${op.action ?? "hide"}"]`);
+        if (visRadio) visRadio.checked = true;
+        break;
+      }
+      case "set_attribute": {
+        const attrVal = document.getElementById("f-attr-value");
+        if (attrVal) attrVal.value = op.value ?? "";
+        if (op.attribute === "src") {
+          const img = document.getElementById("f-img-preview");
+          if (img && op.value) { img.src = op.value; img.style.display = "block"; }
+        }
+        break;
+      }
+      case "modify_class":
+        document.getElementById("f-class-action").value = op.action ?? "add";
+        document.getElementById("f-classes").value = op.classes ?? "";
+        break;
+      case "inject_css":
+        document.getElementById("f-css").value = op.css ?? "";
+        if (op.id) document.getElementById("f-css-id").value = op.id;
+        break;
+      case "move_before":
+      case "move_after":
+        document.getElementById("f-target").value = op.targetSelector ?? "";
+        pickedSelector = op.sourceSelector;
+        break;
+    }
+  }
+
+  function opTypeLabel(type) {
+    return {
+      set_text: "Change Text",
+      set_style: "Change Style",
+      replace_html: "Replace HTML",
+      move_before: "Move Up",
+      move_after: "Move Down",
+      remove: "Remove",
+      insert_html: "Add New Element",
+      modify_class: "Add / Remove Class",
+      inject_css: "Custom CSS",
+      toggle_visibility: "Show / Hide",
+      set_attribute: "Change Attribute"
+    }[type] ?? type;
+  }
+
+  function friendlySelector(selector) {
+    if (!selector) return "element";
+    const abId = selector.match(/data-ab-id=['"]([^'"]+)['"]/);
+    if (abId) return abId[1];
+    const testId = selector.match(/data-testid=['"]([^'"]+)['"]/);
+    if (testId) return testId[1];
+    const id = selector.match(/^#(.+)$/);
+    if (id) return id[1];
+    return selector.replace(/\[.*?\]/g, "").split(">").pop()?.trim() || selector;
+  }
+
+  function opDescription(op) {
+    switch (op.type) {
+      case "set_text": return `Set "${friendlySelector(op.selector)}" text to "${(op.text ?? "").slice(0, 50)}"`;
+      case "set_style": {
+        const entries = Object.entries(op.styleMap ?? {});
+        const first = entries[0];
+        const extra = entries.length > 1 ? ` +${entries.length - 1} more` : "";
+        return first ? `Style ${friendlySelector(op.selector)}: ${first[0]} → ${first[1]}${extra}` : `Style ${friendlySelector(op.selector)}`;
+      }
+      case "replace_html": return `Replace ${op.position === "outer" ? "element" : "contents of"} "${friendlySelector(op.selector)}"`;
+      case "move_before": return `Move "${friendlySelector(op.sourceSelector)}" above "${friendlySelector(op.targetSelector)}"`;
+      case "move_after": return `Move "${friendlySelector(op.sourceSelector)}" below "${friendlySelector(op.targetSelector)}"`;
+      case "remove": return `Remove "${friendlySelector(op.selector)}" from page`;
+      case "insert_html": return `Insert HTML ${op.position ?? "after"} "${friendlySelector(op.selector)}"`;
+      case "modify_class": return `${op.action === "add" ? "Add" : op.action === "remove" ? "Remove" : "Toggle"} class "${op.classes}" on "${friendlySelector(op.selector)}"`;
+      case "inject_css": return `Inject CSS: ${(op.css ?? "").trim().slice(0, 50)}${(op.css ?? "").length > 50 ? "…" : ""}`;
+      case "toggle_visibility": return `${op.action === "hide" ? "Hide" : "Show"} "${friendlySelector(op.selector)}"`;
+      case "set_attribute": return op.attribute === "src" ? `Change image on "${friendlySelector(op.selector)}"` : op.attribute === "href" ? `Change link on "${friendlySelector(op.selector)}"` : `Set ${op.attribute} on "${friendlySelector(op.selector)}"`;
+      default: return op.type;
+    }
+  }
+
+  // ── Goals ─────────────────────────────────────────────────────────────────
+  let editingGoalIndex = -1;
+  let pickingFor = "operation"; // "operation" | "goal"
+
+  function renderGoals() {
+    const list = document.getElementById("goals-list");
+    const goals = experiment?.goals ?? [];
+    if (!goals.length) {
+      list.innerHTML = '<p class="empty-ops">No goals yet</p>';
+    } else {
+      list.innerHTML = goals.map((g, i) => `
+        <div class="goal-item">
+          <div style="flex:1;min-width:0">
+            <span class="goal-type-badge goal-type-${g.type}">${g.type}</span>
+            <span style="font-weight:600;margin-left:4px">${escapeHtml(g.name)}</span>
+            ${g.selector ? `<div style="color:#6b7280;font-size:11px;margin-top:2px">Selector: <code>${escapeHtml(g.selector)}</code></div>` : ""}
+            ${g.urlPattern ? `<div style="color:#6b7280;font-size:11px;margin-top:2px">URL: <code>${escapeHtml(g.urlPattern)}</code></div>` : ""}
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0">
+            <button class="btn-edit-op" data-edit-goal="${i}" title="Edit">✏️</button>
+            <button class="btn-remove-op" data-del-goal="${i}" title="Delete">×</button>
+          </div>
+        </div>
+      `).join("");
+
+      list.querySelectorAll("[data-del-goal]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          experiment.goals.splice(parseInt(btn.dataset.delGoal), 1);
+          renderGoals();
+        });
+      });
+      list.querySelectorAll("[data-edit-goal]").forEach(btn => {
+        btn.addEventListener("click", () => openGoalForm(parseInt(btn.dataset.editGoal)));
+      });
+    }
+
+    // Update goals badge
+    document.getElementById("goals-badge").textContent = goals.length;
+    document.getElementById("goals-badge").style.display = goals.length ? "inline" : "none";
+  }
+
+  function openGoalForm(idx = -1) {
+    editingGoalIndex = idx;
+    const form = document.getElementById("goal-form");
+    form.style.display = "block";
+
+    if (idx >= 0) {
+      const g = experiment.goals[idx];
+      document.getElementById("goal-name").value = g.name;
+      document.getElementById("goal-type").value = g.type;
+      renderGoalTypeFields();
+      if (g.selector) document.getElementById("goal-selector")?.setAttribute("value", g.selector);
+      if (g.urlPattern) document.getElementById("goal-url")?.setAttribute("value", g.urlPattern);
+      // Need to set value after render
+      setTimeout(() => {
+        if (g.selector && document.getElementById("goal-selector")) document.getElementById("goal-selector").value = g.selector;
+        if (g.urlPattern && document.getElementById("goal-url")) document.getElementById("goal-url").value = g.urlPattern;
+      }, 0);
+    } else {
+      document.getElementById("goal-name").value = "";
+      document.getElementById("goal-type").value = "click";
+      renderGoalTypeFields();
+    }
+  }
+
+  function renderGoalTypeFields() {
+    const container = document.getElementById("goal-type-fields");
+    const type = document.getElementById("goal-type").value;
+    if (type === "click") {
+      container.innerHTML = `
+        <label class="field-label">CSS Selector <span style="color:#9ca3af">(element to track clicks on)</span></label>
+        <div style="display:flex;gap:6px">
+          <input type="text" class="prop-input" id="goal-selector" placeholder="e.g. #signup-btn" style="flex:1" />
+          <button class="btn-load" id="btn-pick-goal" style="font-size:11px;padding:5px 8px;white-space:nowrap">Pick</button>
+        </div>
+      `;
+      document.getElementById("btn-pick-goal").addEventListener("click", () => {
+        if (!editorReady) { showStatus("Load a page first", 2000); return; }
+        pickingFor = "goal";
+        sendToFrame(frame, { type: "START_PICK" });
+        btnPick.classList.add("active");
+        btnPick.textContent = "Picking for goal… (Esc)";
+        isPicking = true;
+      });
+    } else if (type === "pageview") {
+      container.innerHTML = `
+        <label class="field-label">URL pattern <span style="color:#9ca3af">(substring or wildcard)</span></label>
+        <input type="text" class="prop-input" id="goal-url" placeholder="e.g. /thank-you or *checkout/success*" />
+      `;
+    } else {
+      container.innerHTML = `<p style="color:#9ca3af;font-size:11px;margin-top:4px">You'll call <code>ab.trackConversion()</code> manually in GTM.</p>`;
+    }
+  }
+
+  document.getElementById("goal-type").addEventListener("change", renderGoalTypeFields);
+
+  document.getElementById("btn-add-goal").addEventListener("click", () => openGoalForm(-1));
+
+  document.getElementById("btn-cancel-goal").addEventListener("click", () => {
+    document.getElementById("goal-form").style.display = "none";
+    editingGoalIndex = -1;
+  });
+
+  document.getElementById("btn-save-goal").addEventListener("click", () => {
+    const name = document.getElementById("goal-name").value.trim();
+    const type = document.getElementById("goal-type").value;
+    if (!name) { showStatus("Enter a goal name", 1500); return; }
+
+    const goal = {
+      id: editingGoalIndex >= 0 ? experiment.goals[editingGoalIndex].id : `goal_${Date.now()}`,
+      name,
+      type,
+      selector: type === "click" ? (document.getElementById("goal-selector")?.value.trim() || undefined) : undefined,
+      urlPattern: type === "pageview" ? (document.getElementById("goal-url")?.value.trim() || undefined) : undefined
+    };
+
+    if (editingGoalIndex >= 0) {
+      experiment.goals[editingGoalIndex] = goal;
+    } else {
+      experiment.goals.push(goal);
+    }
+
+    document.getElementById("goal-form").style.display = "none";
+    editingGoalIndex = -1;
+    renderGoals();
+    showStatus("Goal saved", 1500);
+  });
+
+  // ── Collapsible section toggles ────────────────────────────────────────────
+  document.getElementById("goals-toggle")?.addEventListener("click", () => {
+    const body = document.getElementById("goals-body");
+    body.style.display = body.style.display === "none" ? "block" : "none";
+  });
+  document.getElementById("qa-toggle")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const popover = document.getElementById("qa-popover");
+    const willOpen = !popover.classList.contains("open");
+    popover.classList.toggle("open", willOpen);
+    if (willOpen) renderQaLinks();
+  });
+  document.getElementById("qa-popover")?.addEventListener("click", event => event.stopPropagation());
+  document.addEventListener("click", () => closeQaPopover());
+
+  // ── QA Links ───────────────────────────────────────────────────────────────
+  function renderQaLinks() {
+    const url = document.getElementById("preview-url").value.trim();
+    const container = document.getElementById("qa-links");
+    if (!url || !experiment) { container.innerHTML = '<p class="empty-ops">Load a page first</p>'; return; }
+
+    const base = url.split("?")[0];
+    const rows = experiment.variants.map(v => {
+      const qaUrl = `${base}?ab_qa=${experiment.id}:${v.id}`;
+      return `
+        <div class="qa-link-row">
+          <span class="qa-link-label">${v.name}</span>
+          <button class="qa-link-url" title="${qaUrl}" onclick="window.open('${qaUrl}','_blank')">${qaUrl}</button>
+          <button class="qa-copy-btn" onclick="
+            navigator.clipboard.writeText('${qaUrl}');
+            this.textContent='Copied!';
+            this.classList.add('copied');
+            setTimeout(()=>{this.textContent='Copy';this.classList.remove('copied')},1500)
+          ">Copy</button>
+        </div>`;
+    }).join("");
+    container.innerHTML = rows;
+  }
+
+  // ── Targeting radio handlers ───────────────────────────────────────────────
+  document.querySelectorAll('input[name="target-scope"]').forEach(r => r.addEventListener("change", () => {
+    const isSpecific = document.getElementById("target-specific").checked;
+    document.getElementById("url-list").style.display = isSpecific ? "block" : "none";
+    if (isSpecific && !document.querySelector("#url-list input[data-url-pattern]")) {
+      renderUrlPatternInputs([{ include: true, matchType: "wildcard", pattern: "" }]);
+    }
+    scheduleTargetingOverlapWarningRefresh();
+  }));
+
+  document.getElementById("targeting-section").addEventListener("input", (event) => {
+    if (event.target.matches("input, select")) {
+      scheduleTargetingOverlapWarningRefresh();
+    }
+  });
+  document.getElementById("targeting-section").addEventListener("change", (event) => {
+    if (event.target.matches("input, select")) {
+      scheduleTargetingOverlapWarningRefresh();
+    }
+  });
+
+  // ── Load iframe ────────────────────────────────────────────────────────────
+  document.getElementById("btn-load").addEventListener("click", async () => {
+    const url = document.getElementById("preview-url").value.trim();
+    if (!url) return;
+    try {
+      await loadPreviewUrl(url, { waitForReady: true });
+    } catch (error) {
+      showPreviewInitFailure(error);
+    }
+  });
+  document.getElementById("preview-url").addEventListener("input", refreshRegexHelpers);
+  document.getElementById("preview-url").addEventListener("change", refreshRegexHelpers);
+
+  frame.addEventListener("load", async () => {
+    // Inject editor SDK (same-origin via proxy, so contentDocument is accessible)
+    try {
+      await ensureEditorReadyInFrame();
+      editorReady = true;
+      applyViewportScale();
+      sendToFrame(frame, { type: "START_EDIT_MODE" });
+      renderActiveVariantPreview();
+      showStatus("Editor ready — drag to move, double-click to edit text", 2500);
+    } catch (error) {
+      showPreviewInitFailure(error);
+    }
+  });
+
+  // ── Pick element ───────────────────────────────────────────────────────────
+  const btnPick = document.getElementById("btn-pick");
+  btnPick.addEventListener("click", () => {
+    if (!editorReady) { showStatus("Visual pick unavailable — enter the selector manually below", 2000); return; }
+    if (activeVariant()?.isControl) { showStatus("Control variant cannot have operations", 2000); return; }
+
+    if (isPicking) {
+      sendToFrame(frame, { type: "STOP_PICK" });
+      btnPick.classList.remove("active");
+      btnPick.textContent = "+ Add";
+      isPicking = false;
+      return;
+    }
+
+    sendToFrame(frame, { type: "START_PICK" });
+    btnPick.classList.add("active");
+    btnPick.textContent = "Picking… (click to cancel)";
+    isPicking = true;
+  });
+
+  // ── Back button ────────────────────────────────────────────────────────────
+  document.getElementById("btn-back-ops").addEventListener("click", () => cancelEdit());
+
+  // ── Receive selected element ───────────────────────────────────────────────
+  window.addEventListener("message", (event) => {
+    const msg = event.data;
+    if (!msg) return;
+
+    if (msg.type === "EDITOR_BOOT") {
+      previewBootState = {
+        stage: String(msg.stage ?? ""),
+        detail: String(msg.detail ?? "")
+      };
+      return;
+    }
+
+    if (msg.type === "EDITOR_ERROR") {
+      previewBootState = {
+        stage: `error:${String(msg.phase ?? "runtime")}`,
+        detail: String(msg.message ?? "")
+      };
+      showPreviewInitFailure(new Error(msg.message || "Editor bridge failed to initialize"));
+      return;
+    }
+
+    if (msg.type === "NAVIGATE_PREVIEW") {
+      const nextUrl = String(msg.url ?? "").trim();
+      if (!nextUrl) return;
+      const input = document.getElementById("preview-url");
+      if (input) input.value = nextUrl;
+      previewAutoOpened = true;
+      showStatus("Opening linked page in preview…", 1200);
+      loadPreviewUrl(nextUrl, { waitForReady: true }).catch((error) => {
+        showPreviewInitFailure(error);
+      });
+      return;
+    }
+
+    if (msg.type === "OPERATION_CREATED") {
+      if (activeVariant()?.isControl) return;
+      activeVariant().operations.push(msg.operation);
+      renderOps();
+      showStatus("Operation captured", 1500);
+      return;
+    }
+
+    if (msg.type === "ELEMENT_SELECTED") {
+      isPicking = false;
+      btnPick.classList.remove("active");
+      btnPick.textContent = "+ Add";
+
+      if (pickingFor === "goal") {
+        pickingFor = "operation";
+        const selectorInput = document.getElementById("goal-selector");
+        if (selectorInput) selectorInput.value = msg.selector;
+        return;
+      }
+
+      pickingFor = "operation";
+      pickedSelector = msg.selector;
+      pickedContext = msg;
+      const display = document.getElementById("selector-display");
+      display.innerHTML = `<code>${msg.selector}</code> <span class="confidence-badge confidence-${msg.confidence}">${msg.confidence}</span>`;
+      renderSelectionMeta(msg);
+      renderOpFields(msg);
+      showEditPanel();
+    }
+  });
+
+  // ── Property panel fields ──────────────────────────────────────────────────
+  const opTypeSelect = document.getElementById("op-type");
+  opTypeSelect.addEventListener("change", () => renderOpFields(pickedContext));
+
+  function renderOpFields(context) {
+    const container = document.getElementById("op-fields");
+    const type = opTypeSelect.value;
+
+    switch (type) {
+      case "set_text":
+        container.innerHTML = `
+          <label class="field-label">New text</label>
+          <textarea id="f-text" rows="2">${escapeHtml(context.textContent ?? "")}</textarea>
+        `;
+        break;
+
+      case "set_style":
+        container.innerHTML = `
+          <!-- Color section -->
+          <div class="vs-section">
+            <div class="vs-section-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">Color <span>▾</span></div>
+            <div class="vs-section-body">
+              <div class="vs-row">
+                <span class="vs-label">Text color</span>
+                <div class="vs-color-wrap">
+                  <input type="color" class="vs-color-input" id="vs-color" value="#000000" oninput="document.getElementById('vs-color-hex').value=this.value" />
+                  <input class="vs-hex" id="vs-color-hex" value="#000000" maxlength="7" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value))document.getElementById('vs-color').value=this.value" />
+                </div>
+              </div>
+              <div class="vs-row">
+                <span class="vs-label">SVG Fill</span>
+                <div class="vs-color-wrap">
+                  <input type="color" class="vs-color-input" id="vs-fill" value="#000000" oninput="document.getElementById('vs-fill-hex').value=this.value" />
+                  <input class="vs-hex" id="vs-fill-hex" value="" placeholder="none" maxlength="7" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value))document.getElementById('vs-fill').value=this.value" />
+                </div>
+              </div>
+              <div class="vs-row">
+                <span class="vs-label">SVG Stroke</span>
+                <div class="vs-color-wrap">
+                  <input type="color" class="vs-color-input" id="vs-stroke" value="#000000" oninput="document.getElementById('vs-stroke-hex').value=this.value" />
+                  <input class="vs-hex" id="vs-stroke-hex" value="" placeholder="none" maxlength="7" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value))document.getElementById('vs-stroke').value=this.value" />
+                </div>
+              </div>
+              <div class="vs-row">
+                <span class="vs-label">Background</span>
+                <div class="vs-radio-group" id="bg-type-group">
+                  <label><input type="radio" name="bg-type" value="none" checked /> None</label>
+                  <label><input type="radio" name="bg-type" value="solid" /> Solid</label>
+                  <label><input type="radio" name="bg-type" value="gradient" /> Gradient</label>
+                </div>
+              </div>
+              <div id="bg-solid-row" style="display:none" class="vs-row">
+                <span class="vs-label"></span>
+                <div class="vs-color-wrap">
+                  <input type="color" class="vs-color-input" id="vs-bg" value="#ffffff" oninput="document.getElementById('vs-bg-hex').value=this.value" />
+                  <input class="vs-hex" id="vs-bg-hex" value="#ffffff" maxlength="7" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value))document.getElementById('vs-bg').value=this.value" />
+                </div>
+              </div>
+              <div id="bg-gradient-rows" style="display:none">
+                <div class="vs-row">
+                  <span class="vs-label">From</span>
+                  <div class="vs-color-wrap">
+                    <input type="color" class="vs-color-input" id="vs-grad-from" value="#ff0000" oninput="document.getElementById('vs-grad-from-hex').value=this.value" />
+                    <input class="vs-hex" id="vs-grad-from-hex" value="#ff0000" maxlength="7" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value))document.getElementById('vs-grad-from').value=this.value" />
+                  </div>
+                </div>
+                <div class="vs-row">
+                  <span class="vs-label">To</span>
+                  <div class="vs-color-wrap">
+                    <input type="color" class="vs-color-input" id="vs-grad-to" value="#0000ff" oninput="document.getElementById('vs-grad-to-hex').value=this.value" />
+                    <input class="vs-hex" id="vs-grad-to-hex" value="#0000ff" maxlength="7" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value))document.getElementById('vs-grad-to').value=this.value" />
+                  </div>
+                </div>
+                <div class="vs-row">
+                  <span class="vs-label">Direction</span>
+                  <select class="vs-select" id="vs-grad-dir">
+                    <option value="to right">→ Left to Right</option>
+                    <option value="to left">← Right to Left</option>
+                    <option value="to bottom">↓ Top to Bottom</option>
+                    <option value="to top">↑ Bottom to Top</option>
+                    <option value="to bottom right">↘ Diagonal</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Typography section -->
+          <div class="vs-section">
+            <div class="vs-section-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">Typography <span>▾</span></div>
+            <div class="vs-section-body">
+              <div class="vs-row">
+                <span class="vs-label">Font</span>
+                <select class="vs-select" id="vs-font">
+                  <option value="">System default</option>
+                  <option value="Arial, sans-serif">Arial</option>
+                  <option value="Georgia, serif">Georgia</option>
+                  <option value="Verdana, sans-serif">Verdana</option>
+                  <option value="'Roboto', sans-serif">Roboto</option>
+                  <option value="'Open Sans', sans-serif">Open Sans</option>
+                  <option value="'Lato', sans-serif">Lato</option>
+                  <option value="'Montserrat', sans-serif">Montserrat</option>
+                  <option value="'Playfair Display', serif">Playfair Display</option>
+                </select>
+              </div>
+              <div class="vs-row">
+                <span class="vs-label">Size</span>
+                <input type="number" class="vs-small" id="vs-size" placeholder="16" min="8" max="200" /> <span style="font-size:11px;color:#9ca3af">px</span>
+              </div>
+              <div class="vs-row">
+                <span class="vs-label">Weight</span>
+                <select class="vs-select" id="vs-weight">
+                  <option value="">Default</option>
+                  <option value="300">Light</option>
+                  <option value="400">Normal</option>
+                  <option value="500">Medium</option>
+                  <option value="600">Semi Bold</option>
+                  <option value="700">Bold</option>
+                  <option value="800">Extra Bold</option>
+                </select>
+              </div>
+              <div class="vs-row">
+                <span class="vs-label">Align</span>
+                <div class="vs-align-group">
+                  <button class="vs-align-btn" data-align="left">≡</button>
+                  <button class="vs-align-btn" data-align="center">☰</button>
+                  <button class="vs-align-btn" data-align="right">≡</button>
+                </div>
+              </div>
+              <div class="vs-row">
+                <span class="vs-label">Line height</span>
+                <input type="number" class="vs-small" id="vs-lh" placeholder="1.5" min="0.5" max="5" step="0.1" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Spacing section -->
+          <div class="vs-section">
+            <div class="vs-section-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">Spacing <span>▾</span></div>
+            <div class="vs-section-body">
+              <div class="vs-row">
+                <span class="vs-label">Padding</span>
+                <div class="vs-4box">
+                  <input type="number" id="vs-pt" placeholder="T" min="0" />
+                  <input type="number" id="vs-pr" placeholder="R" min="0" />
+                  <input type="number" id="vs-pb" placeholder="B" min="0" />
+                  <input type="number" id="vs-pl" placeholder="L" min="0" />
+                </div>
+                <span style="font-size:10px;color:#9ca3af;margin-left:3px">px</span>
+              </div>
+              <div class="vs-row">
+                <span class="vs-label">Margin</span>
+                <div class="vs-4box">
+                  <input type="number" id="vs-mt" placeholder="T" />
+                  <input type="number" id="vs-mr" placeholder="R" />
+                  <input type="number" id="vs-mb" placeholder="B" />
+                  <input type="number" id="vs-ml" placeholder="L" />
+                </div>
+                <span style="font-size:10px;color:#9ca3af;margin-left:3px">px</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Border section -->
+          <div class="vs-section">
+            <div class="vs-section-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">Border <span>▾</span></div>
+            <div class="vs-section-body">
+              <div class="vs-row">
+                <span class="vs-label">Radius</span>
+                <input type="number" class="vs-small" id="vs-radius" placeholder="0" min="0" /> <span style="font-size:11px;color:#9ca3af">px</span>
+              </div>
+              <div class="vs-row">
+                <span class="vs-label">Border</span>
+                <input type="number" class="vs-small" id="vs-bw" placeholder="0" min="0" style="width:40px" />
+                <select class="vs-select" id="vs-bs" style="width:70px;flex:none">
+                  <option value="solid">Solid</option>
+                  <option value="dashed">Dashed</option>
+                  <option value="dotted">Dotted</option>
+                  <option value="none">None</option>
+                </select>
+                <div class="vs-color-wrap" style="flex:none;width:80px">
+                  <input type="color" class="vs-color-input" id="vs-bc" value="#cccccc" oninput="document.getElementById('vs-bc-hex').value=this.value" />
+                  <input class="vs-hex" id="vs-bc-hex" value="#cccccc" maxlength="7" style="width:60px" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value))document.getElementById('vs-bc').value=this.value" />
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        // Background type toggle
+        document.querySelectorAll('input[name="bg-type"]').forEach(r => r.addEventListener("change", e => {
+          document.getElementById("bg-solid-row").style.display = e.target.value === "solid" ? "flex" : "none";
+          document.getElementById("bg-gradient-rows").style.display = e.target.value === "gradient" ? "block" : "none";
+        }));
+        // Text align buttons
+        document.querySelectorAll(".vs-align-btn").forEach(btn => btn.addEventListener("click", () => {
+          document.querySelectorAll(".vs-align-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.toggle("active");
+        }));
+        if (context.computedStyles) prefillStyleEditor(context.computedStyles);
+        break;
+
+      case "replace_html":
+        container.innerHTML = `
+          <label class="field-label">HTML</label>
+          <textarea id="f-html" rows="4"></textarea>
+          <div class="html-actions">
+            <button type="button" class="btn-html-source" id="btn-html-inner">Use current inner HTML</button>
+            <button type="button" class="btn-html-source" id="btn-html-outer">Use current outer HTML</button>
+          </div>
+          <label class="field-label">Position</label>
+          <div class="radio-group">
+            <label><input type="radio" name="position" value="outer" checked /> Outer (replace element)</label>
+            <label><input type="radio" name="position" value="inner" /> Inner (replace contents)</label>
+          </div>
+          <p class="vs-tip">Use inner HTML to edit the contents of the selected element, or outer HTML to replace the element itself.</p>
+        `;
+        if (context.innerHTML) document.getElementById("f-html").value = context.innerHTML;
+        document.getElementById("btn-html-inner")?.addEventListener("click", () => {
+          document.getElementById("f-html").value = context.innerHTML ?? "";
+          document.querySelector('input[name="position"][value="inner"]').checked = true;
+          schedulePreview();
+        });
+        document.getElementById("btn-html-outer")?.addEventListener("click", () => {
+          document.getElementById("f-html").value = context.outerHTML ?? context.innerHTML ?? "";
+          document.querySelector('input[name="position"][value="outer"]').checked = true;
+          schedulePreview();
+        });
+        break;
+
+      case "insert_html":
+        container.innerHTML = `
+          <label class="field-label">Where to add</label>
+          <div class="vs-radio-group" style="margin-bottom:6px">
+            <label><input type="radio" name="insert-pos" value="before" /> Before this element</label>
+            <label><input type="radio" name="insert-pos" value="after" checked /> After this element</label>
+            <label><input type="radio" name="insert-pos" value="prepend" /> Inside — at the start</label>
+            <label><input type="radio" name="insert-pos" value="append" /> Inside — at the end</label>
+          </div>
+          <label class="field-label">HTML to insert</label>
+          <textarea id="f-insert-html" rows="4" placeholder='&lt;div class="promo"&gt;Hello&lt;/div&gt;'></textarea>
+          <div class="html-actions">
+            <button type="button" class="btn-html-source" id="btn-insert-selected">Clone selected element</button>
+          </div>
+        `;
+        document.getElementById("btn-insert-selected")?.addEventListener("click", () => {
+          document.getElementById("f-insert-html").value = context.outerHTML ?? "";
+          schedulePreview();
+        });
+        break;
+
+      case "toggle_visibility":
+        container.innerHTML = `
+          <label class="field-label">Action</label>
+          <div class="vs-radio-group">
+            <label><input type="radio" name="vis-action" value="hide" checked /> Hide this element</label>
+            <label><input type="radio" name="vis-action" value="show" /> Show this element</label>
+          </div>
+          <p class="vs-tip" style="margin-top:6px">Hiding removes the element from view. Showing restores it.</p>
+        `;
+        if (context.computedStyles?.display === "none") {
+          document.querySelector('input[name="vis-action"][value="show"]').checked = true;
+        }
+        break;
+
+      case "set_attribute_src":
+        container.innerHTML = `
+          <label class="field-label">New image URL</label>
+          <input type="text" class="prop-input" id="f-attr-value" placeholder="https://example.com/new-image.jpg" />
+          <input type="file" id="f-attr-file" accept="image/*" style="display:none" />
+          <button type="button" class="btn-upload-image" id="btn-upload-image">Upload image file</button>
+          <img class="vs-img-preview" id="f-img-preview" />
+          <p class="vs-tip">Paste an image URL or upload a local file. Local uploads are stored as data URLs for fast MVP iteration.</p>
+        `;
+        document.getElementById("f-attr-value").addEventListener("input", e => {
+          const img = document.getElementById("f-img-preview");
+          img.src = e.target.value;
+          img.style.display = e.target.value ? "block" : "none";
+        });
+        document.getElementById("btn-upload-image")?.addEventListener("click", () => {
+          document.getElementById("f-attr-file")?.click();
+        });
+        document.getElementById("f-attr-file")?.addEventListener("change", event => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            const value = typeof reader.result === "string" ? reader.result : "";
+            document.getElementById("f-attr-value").value = value;
+            const img = document.getElementById("f-img-preview");
+            img.src = value;
+            img.style.display = value ? "block" : "none";
+            schedulePreview();
+          };
+          reader.readAsDataURL(file);
+        });
+        if (context.attributes?.src) {
+          const inp = document.getElementById("f-attr-value");
+          inp.value = context.attributes.src;
+          const img = document.getElementById("f-img-preview");
+          img.src = context.attributes.src;
+          img.style.display = "block";
+        }
+        break;
+
+      case "set_attribute_href":
+        container.innerHTML = `
+          <label class="field-label">New link destination</label>
+          <input type="text" class="prop-input" id="f-attr-value" placeholder="https://example.com/subscribe" />
+          <p class="vs-tip">Paste the URL this link should navigate to.</p>
+        `;
+        if (context.attributes?.href) document.getElementById("f-attr-value").value = context.attributes.href;
+        break;
+
+      case "modify_class":
+        container.innerHTML = `
+          <label class="field-label">Action</label>
+          <select class="prop-input" id="f-class-action">
+            <option value="add">Add class</option>
+            <option value="remove">Remove class</option>
+            <option value="toggle">Toggle class</option>
+          </select>
+          <label class="field-label">Class name(s)</label>
+          <input type="text" class="prop-input" id="f-classes" placeholder="e.g. highlight active" />
+          <p class="vs-tip">Separate multiple class names with a space.</p>
+        `;
+        if (context.classList?.length) document.getElementById("f-classes").value = context.classList.join(" ");
+        break;
+
+      case "inject_css":
+        container.innerHTML = `
+          <label class="field-label">CSS rules</label>
+          <textarea id="f-css" rows="5" placeholder=".hero { background: linear-gradient(red, blue); }&#10;.hero:hover { opacity: 0.8; }"></textarea>
+          <p class="vs-tip">These styles apply to the whole page. Use this for hover effects, animations, or gradients across multiple elements.</p>
+          <input type="hidden" id="f-css-id" value="ab-css-${Date.now()}" />
+        `;
+        break;
+
+      case "move_before":
+      case "move_after":
+        container.innerHTML = `
+          <label class="field-label">Target selector (move ${type === "move_before" ? "before" : "after"} this)</label>
+          <input type="text" class="prop-input" id="f-target" placeholder="e.g. [data-ab-id='features']" />
+        `;
+        break;
+      case "remove":
+        container.innerHTML = `<p style="color:#9ca3af;font-size:12px;margin-top:8px">The selected element will be removed.</p>`;
+        break;
+    }
+  }
+
+  function prefillStyleEditor(cs) {
+    const isHex = v => /^#[0-9a-fA-F]{6}$/.test(v);
+    const isTransparent = v => !v || v === "rgba(0, 0, 0, 0)" || v === "transparent";
+    const setColor = (pickerId, hexId, val) => {
+      if (!isHex(val)) return;
+      document.getElementById(pickerId).value = val;
+      document.getElementById(hexId).value = val;
+    };
+
+    // Text color
+    const color = cs["color"];
+    if (isHex(color)) setColor("vs-color", "vs-color-hex", color);
+
+    // SVG fill / stroke
+    const fill = cs["fill"];
+    if (isHex(fill) && fill !== "#000000") setColor("vs-fill", "vs-fill-hex", fill);
+    const stroke = cs["stroke"];
+    if (isHex(stroke) && stroke !== "#000000") setColor("vs-stroke", "vs-stroke-hex", stroke);
+
+    // Background
+    const bgImg = cs["background-image"];
+    const bgColor = cs["background-color"];
+    if (bgImg && bgImg !== "none") {
+      // Gradient
+      const m = bgImg.match(/linear-gradient\(([^,]+),\s*(#[0-9a-fA-F]{6}),\s*(#[0-9a-fA-F]{6})\)/);
+      if (m) {
+        document.querySelector('input[name="bg-type"][value="gradient"]').checked = true;
+        document.getElementById("bg-solid-row").style.display = "none";
+        document.getElementById("bg-gradient-rows").style.display = "block";
+        const dirEl = document.getElementById("vs-grad-dir");
+        if (dirEl) dirEl.value = m[1].trim();
+        setColor("vs-grad-from", "vs-grad-from-hex", m[2]);
+        setColor("vs-grad-to", "vs-grad-to-hex", m[3]);
+      }
+    } else if (!isTransparent(bgColor) && isHex(bgColor)) {
+      document.querySelector('input[name="bg-type"][value="solid"]').checked = true;
+      document.getElementById("bg-solid-row").style.display = "flex";
+      setColor("vs-bg", "vs-bg-hex", bgColor);
+    }
+
+    // Font
+    const ff = cs["font-family"];
+    if (ff) document.getElementById("vs-font").value = ff;
+    const fs = cs["font-size"];
+    if (fs) document.getElementById("vs-size").value = parseInt(fs) || "";
+    const fw = cs["font-weight"];
+    if (fw) document.getElementById("vs-weight").value = fw;
+    const ta = cs["text-align"];
+    if (ta) document.querySelectorAll(".vs-align-btn").forEach(b => { if (b.dataset.align === ta) b.classList.add("active"); });
+    const lh = cs["line-height"];
+    if (lh && lh !== "normal") document.getElementById("vs-lh").value = parseFloat(lh) || "";
+
+    // Spacing
+    const setNum = (id, key) => { const v = cs[key]; if (v) document.getElementById(id).value = parseInt(v) || ""; };
+    setNum("vs-pt", "padding-top"); setNum("vs-pr", "padding-right");
+    setNum("vs-pb", "padding-bottom"); setNum("vs-pl", "padding-left");
+    setNum("vs-mt", "margin-top"); setNum("vs-mr", "margin-right");
+    setNum("vs-mb", "margin-bottom"); setNum("vs-ml", "margin-left");
+
+    // Border
+    const br = cs["border-radius"];
+    if (br) document.getElementById("vs-radius").value = parseInt(br) || "";
+    const bw = cs["border-top-width"];
+    const bs = cs["border-style"];
+    const bc = cs["border-color"];
+    if (bw && parseInt(bw) > 0) {
+      document.getElementById("vs-bw").value = parseInt(bw) || "";
+      if (bs) document.getElementById("vs-bs").value = bs;
+      if (isHex(bc)) setColor("vs-bc", "vs-bc-hex", bc);
+    }
+  }
+
+  function buildOperation() {
+    const type = opTypeSelect.value;
+    const selector = pickedSelector;
+
+    switch (type) {
+      case "set_text":
+        return { type, selector, text: document.getElementById("f-text")?.value ?? "" };
+      case "set_style": {
+        const styleMap = {};
+        const color = document.getElementById("vs-color-hex")?.value?.trim();
+        if (color && color !== "#000000") styleMap["color"] = color;
+        const bgType = document.querySelector('input[name="bg-type"]:checked')?.value;
+        if (bgType === "solid") {
+          const v = document.getElementById("vs-bg-hex")?.value;
+          if (v) styleMap["background-color"] = v;
+        } else if (bgType === "gradient") {
+          const from = document.getElementById("vs-grad-from-hex")?.value;
+          const to = document.getElementById("vs-grad-to-hex")?.value;
+          const dir = document.getElementById("vs-grad-dir")?.value ?? "to right";
+          if (from && to) styleMap["background"] = `linear-gradient(${dir}, ${from}, ${to})`;
+        }
+        const fill = document.getElementById("vs-fill-hex")?.value?.trim();
+        if (fill && /^#[0-9a-fA-F]{6}$/.test(fill)) styleMap["fill"] = fill;
+        const stroke = document.getElementById("vs-stroke-hex")?.value?.trim();
+        if (stroke && /^#[0-9a-fA-F]{6}$/.test(stroke)) styleMap["stroke"] = stroke;
+        const font = document.getElementById("vs-font")?.value;
+        if (font) styleMap["font-family"] = font;
+        const size = document.getElementById("vs-size")?.value;
+        if (size) styleMap["font-size"] = `${size}px`;
+        const weight = document.getElementById("vs-weight")?.value;
+        if (weight) styleMap["font-weight"] = weight;
+        const activeAlign = document.querySelector(".vs-align-btn.active");
+        if (activeAlign) styleMap["text-align"] = activeAlign.dataset.align;
+        const lh = document.getElementById("vs-lh")?.value;
+        if (lh) styleMap["line-height"] = lh;
+        const pt = document.getElementById("vs-pt")?.value;
+        const pr = document.getElementById("vs-pr")?.value;
+        const pb = document.getElementById("vs-pb")?.value;
+        const pl = document.getElementById("vs-pl")?.value;
+        if (pt !== "" || pr !== "" || pb !== "" || pl !== "") {
+          styleMap["padding"] = `${pt||0}px ${pr||0}px ${pb||0}px ${pl||0}px`;
+        }
+        const mt = document.getElementById("vs-mt")?.value;
+        const mr = document.getElementById("vs-mr")?.value;
+        const mb = document.getElementById("vs-mb")?.value;
+        const ml = document.getElementById("vs-ml")?.value;
+        if (mt !== "" || mr !== "" || mb !== "" || ml !== "") {
+          styleMap["margin"] = `${mt||0}px ${mr||0}px ${mb||0}px ${ml||0}px`;
+        }
+        const radius = document.getElementById("vs-radius")?.value;
+        if (radius) styleMap["border-radius"] = `${radius}px`;
+        const bw = document.getElementById("vs-bw")?.value;
+        const bs = document.getElementById("vs-bs")?.value;
+        const bc = document.getElementById("vs-bc-hex")?.value;
+        if (bw && bs !== "none") styleMap["border"] = `${bw}px ${bs} ${bc || "#cccccc"}`;
+        return { type, selector, styleMap };
+      }
+      case "replace_html":
+        return {
+          type, selector,
+          html: document.getElementById("f-html")?.value ?? "",
+          position: document.querySelector('input[name="position"]:checked')?.value ?? "outer"
+        };
+      case "insert_html":
+        return {
+          type, selector,
+          html: document.getElementById("f-insert-html")?.value ?? "",
+          position: document.querySelector('input[name="insert-pos"]:checked')?.value ?? "after"
+        };
+      case "toggle_visibility":
+        return { type, selector, action: document.querySelector('input[name="vis-action"]:checked')?.value ?? "hide" };
+      case "set_attribute_src":
+        return { type: "set_attribute", selector, attribute: "src", value: document.getElementById("f-attr-value")?.value ?? "" };
+      case "set_attribute_href":
+        return { type: "set_attribute", selector, attribute: "href", value: document.getElementById("f-attr-value")?.value ?? "" };
+      case "modify_class":
+        return { type, selector, action: document.getElementById("f-class-action")?.value ?? "add", classes: document.getElementById("f-classes")?.value?.trim() ?? "" };
+      case "inject_css":
+        return { type, css: document.getElementById("f-css")?.value ?? "", id: document.getElementById("f-css-id")?.value ?? `ab-css-${Date.now()}` };
+      case "move_before":
+        return { type, sourceSelector: selector, targetSelector: document.getElementById("f-target")?.value ?? "" };
+      case "move_after":
+        return { type, sourceSelector: selector, targetSelector: document.getElementById("f-target")?.value ?? "" };
+      case "remove":
+        return { type, selector };
+    }
+  }
+
+  // ── Auto-preview ──────────────────────────────────────────────────────────
+  let previewTimer = null;
+  let previewAutoOpened = false;
+  let targetingOverlapTimer = null;
+  function schedulePreview() {
+    if (!editorReady) return;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+      const op = buildOperation();
+      if (!op) return;
+      sendToFrame(frame, { type: "RESET_PREVIEW" });
+      const ops = activeVariant()?.operations ?? [];
+      ops.forEach((o, i) => {
+        if (editingOpIndex < 0 || i !== editingOpIndex) {
+          sendToFrame(frame, { type: "PREVIEW_OPERATION", operation: o });
+        }
+      });
+      sendToFrame(frame, { type: "PREVIEW_OPERATION", operation: op });
+    }, 300);
+  }
+
+  // Delegate on the op-fields container (persists across innerHTML replacements)
+  const opFieldsEl = document.getElementById("op-fields");
+  opFieldsEl.addEventListener("input", schedulePreview);
+  opFieldsEl.addEventListener("change", schedulePreview);
+  opFieldsEl.addEventListener("click", e => {
+    if (e.target.closest(".vs-align-btn") || e.target.matches('input[type="radio"]')) schedulePreview();
+  });
+
+  document.getElementById("btn-reset").addEventListener("click", () => {
+    if (!editorReady) return;
+    clearTimeout(previewTimer);
+    renderActiveVariantPreview();
+  });
+
+  // ── Viewport toggle ────────────────────────────────────────────────────────
+  document.getElementById("btn-viewport-desktop").addEventListener("click", () => {
+    refreshPreviewForViewport("desktop");
+  });
+
+  document.getElementById("btn-viewport-mobile").addEventListener("click", () => {
+    refreshPreviewForViewport("mobile");
+  });
+
+  // ResizeObserver for live scale update
+  const wrapObserver = new ResizeObserver(() => applyViewportScale());
+  wrapObserver.observe(document.getElementById("iframe-wrap"));
+
+  // ── Add / Update operation ─────────────────────────────────────────────────
+  document.getElementById("btn-add-op").addEventListener("click", () => {
+    const op = buildOperation();
+    const validationError = validateDraftOperation(op);
+    if (validationError) {
+      showStatus(validationError, 2200);
+      return;
+    }
+    if (editingOpIndex >= 0) {
+      activeVariant().operations[editingOpIndex] = op;
+      editingOpIndex = -1;
+      document.getElementById("btn-add-op").textContent = "Add Operation";
+      showStatus("Operation updated", 1500);
+    } else {
+      activeVariant().operations.push(op);
+      showStatus("Operation added", 1500);
+    }
+    renderOps();
+    restoreSavedPreview();
+    pickedSelector = null;
+    pickedContext = {};
+    document.getElementById("selector-display").innerHTML = "";
+    renderSelectionMeta({});
+    showOpsPanel();
+  });
+
+  // ── Save / Publish ─────────────────────────────────────────────────────────
+  document.getElementById("btn-save").addEventListener("click", async () => {
+    const name = document.getElementById("exp-name").value.trim();
+    const targeting = buildTargeting();
+    const targetingError = validateTargeting(targeting);
+    if (targetingError) {
+      showStatus(targetingError, 2200);
+      return;
+    }
+    const patch = {
+      name,
+      variants: experiment.variants,
+      goals: experiment.goals,
+      targeting
+    };
+    await updateExperiment(expId, patch);
+    experiment = { ...experiment, ...patch };
+    showStatus("Saved", 1500);
+  });
+
+  // ── Conflict detection ─────────────────────────────────────────────────────
+  async function checkConflicts() {
+    let allExperiments = [];
+    try {
+      allExperiments = await fetchExperiments();
+    } catch { return []; }
+
+    // Selectors used by the current experiment's non-control variants
+    const mySelectors = new Set(
+      experiment.variants
+        .filter(v => !v.isControl)
+        .flatMap(v => v.operations.map(op => op.selector).filter(Boolean))
+    );
+    if (mySelectors.size === 0) return [];
+
+    const conflicts = [];
+    for (const other of allExperiments) {
+      if (other.id === experiment.id || other.status !== "active") continue;
+      const overlaps = targetingsOverlap(buildTargeting(), other.targeting);
+      if (!overlaps) continue;
+
+      for (const variant of other.variants) {
+        if (variant.isControl) continue;
+        for (const op of variant.operations) {
+          if (op.selector && mySelectors.has(op.selector)) {
+            conflicts.push({
+              experimentName: other.name,
+              variantName: variant.name,
+              selector: op.selector,
+              type: op.type
+            });
+          }
+        }
+      }
+    }
+    return conflicts;
+  }
+
+  function showConflictWarning(conflicts) {
+    return new Promise((resolve) => {
+      const rows = conflicts.map(c =>
+        `<tr>
+          <td style="padding:6px 10px;font-size:12px;font-family:monospace;color:#7c3aed">${c.selector}</td>
+          <td style="padding:6px 10px;font-size:12px">${c.experimentName} — ${c.variantName}</td>
+          <td style="padding:6px 10px;font-size:12px;color:#6b7280">${c.type}</td>
+        </tr>`
+      ).join("");
+
+      const modal = document.createElement("div");
+      modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center";
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:10px;padding:24px;width:560px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+          <h2 style="font-size:15px;font-weight:600;margin-bottom:8px;color:#b91c1c">⚠ Selector Conflicts Detected</h2>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:16px">The following selectors are already used by active experiments. Publishing may cause one experiment to overwrite the other's changes.</p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+            <thead><tr style="background:#f9fafb">
+              <th style="padding:6px 10px;font-size:11px;text-align:left;color:#6b7280">Selector</th>
+              <th style="padding:6px 10px;font-size:11px;text-align:left;color:#6b7280">Conflict with</th>
+              <th style="padding:6px 10px;font-size:11px;text-align:left;color:#6b7280">Type</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button id="conflict-cancel" style="background:#f3f4f6;border:none;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer">Cancel</button>
+            <button id="conflict-proceed" style="background:#b91c1c;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer">Publish Anyway</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector("#conflict-cancel").onclick = () => { document.body.removeChild(modal); resolve(false); };
+      modal.querySelector("#conflict-proceed").onclick = () => { document.body.removeChild(modal); resolve(true); };
+    });
+  }
+
+  function setPublishButtonBusy(isBusy, label) {
+    const button = document.getElementById("btn-publish");
+    publishInProgress = isBusy;
+    button.disabled = isBusy;
+    button.style.opacity = isBusy ? "0.75" : "1";
+    button.style.cursor = isBusy ? "not-allowed" : "pointer";
+    button.textContent = label ?? (isBusy ? "Publishing..." : "Publish");
+  }
+
+  document.getElementById("btn-publish").addEventListener("click", async () => {
+    if (publishInProgress) return;
+    const name = document.getElementById("exp-name").value.trim();
+    const targeting = buildTargeting();
+    const targetingError = validateTargeting(targeting);
+    if (targetingError) {
+      showStatus(targetingError, 2200);
+      return;
+    }
+
+    // Check for conflicts before publishing
+    const conflicts = await checkConflicts();
+    if (conflicts.length > 0) {
+      const proceed = await showConflictWarning(conflicts);
+      if (!proceed) return;
+    }
+
+    setPublishButtonBusy(true, "Capturing previews...");
+    let captureStats = { captured: 0, failed: 0, skipped: 0 };
+    try {
+      captureStats = await captureSnapshotsForPublish();
+      setPublishButtonBusy(true, "Publishing...");
+
+      const patch = {
+        name,
+        variants: experiment.variants,
+        goals: experiment.goals,
+        targeting,
+        status: "active"
+      };
+      await updateExperiment(expId, patch);
+      experiment = { ...experiment, ...patch };
+
+      const notes = [];
+      if (captureStats.captured > 0) notes.push(`${captureStats.captured} screenshot(s) saved`);
+      if (captureStats.failed > 0) notes.push(`${captureStats.failed} screenshot(s) failed`);
+      if (captureStats.skipped > 0) notes.push("screenshots skipped (load preview first)");
+      const suffix = notes.length ? ` (${notes.join(", ")})` : "";
+      showStatus(`Published - experiment is now active${suffix}`, 3200);
+    } finally {
+      setPublishButtonBusy(false, "Publish");
+    }
+  });
+
+  // ── Utilities ──────────────────────────────────────────────────────────────
+  function showStatus(msg, duration = 2000) {
+    const bar = document.getElementById("status-bar");
+    bar.textContent = msg;
+    bar.style.display = "block";
+    setTimeout(() => { bar.style.display = "none"; }, duration);
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // Initial field render
+  renderOpFields({});
+</script>
+</body>
+</html>
+

@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A/B Testing - Results</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; color: #111827; min-height: 100vh; }
+    header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    .header-actions { display: flex; gap: 8px; }
+    button { cursor: pointer; border: none; border-radius: 7px; padding: 8px 14px; font-size: 13px; }
+    .btn-secondary { background: #f3f4f6; color: #374151; }
+    .btn-primary { background: #7c3aed; color: #fff; }
+    .layout { display: grid; grid-template-columns: 340px 1fr; gap: 16px; max-width: 1280px; margin: 22px auto; padding: 0 22px; }
+    .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .panel-header { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; font-size: 12px; color: #6b7280; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; }
+    .result-list { max-height: calc(100vh - 180px); overflow-y: auto; padding: 8px; }
+    .result-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-bottom: 8px; cursor: pointer; }
+    .result-card:hover { border-color: #c4b5fd; background: #faf5ff; }
+    .result-card.active { border-color: #7c3aed; background: #faf5ff; box-shadow: 0 0 0 1px #c4b5fd inset; }
+    .result-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .result-title strong { font-size: 14px; line-height: 1.3; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+    .metric { background: #f9fafb; border-radius: 8px; padding: 8px; }
+    .metric-label { font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: 600; letter-spacing: 0.04em; margin-bottom: 3px; }
+    .metric-value { font-size: 14px; font-weight: 600; color: #111827; }
+    .detail-wrap { min-height: calc(100vh - 180px); overflow-y: auto; padding: 18px; }
+    .detail-empty { color: #9ca3af; display: flex; align-items: center; justify-content: center; min-height: 320px; font-size: 14px; }
+    .summary-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0 16px; }
+    .summary-card { border: 1px solid #ede9fe; background: #faf5ff; border-radius: 10px; padding: 10px 12px; }
+    .summary-card .label { font-size: 10px; text-transform: uppercase; color: #6d28d9; letter-spacing: 0.04em; font-weight: 700; margin-bottom: 4px; }
+    .summary-card .value { font-size: 18px; font-weight: 700; color: #4c1d95; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+    th { background: #f9fafb; font-size: 11px; text-align: left; padding: 10px 12px; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; font-size: 13px; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .pill { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .pill-control { background: #e0e7ff; color: #4338ca; }
+    .pill-variant { background: #ede9fe; color: #6d28d9; }
+    .up-positive { color: #047857; font-weight: 600; }
+    .up-negative { color: #b91c1c; font-weight: 600; }
+    .screenshot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 14px; }
+    .shot-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px; background: #fff; }
+    .shot-meta { font-size: 11px; color: #6b7280; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; }
+    .shot-button { width: 100%; padding: 0; border: none; background: transparent; cursor: zoom-in; text-align: left; }
+    .shot-image { width: 100%; aspect-ratio: 16 / 10; border-radius: 8px; border: 1px solid #e5e7eb; object-fit: cover; background: #f3f4f6; }
+    .shot-button:hover .shot-image { border-color: #c4b5fd; box-shadow: 0 0 0 1px #c4b5fd inset; }
+    .shot-empty { width: 100%; aspect-ratio: 16 / 10; border-radius: 8px; border: 1px dashed #d1d5db; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 12px; background: #f9fafb; }
+    .note { margin-top: 12px; font-size: 12px; color: #6b7280; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; }
+    .goal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-top: 14px; }
+    .goal-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; background: #fff; }
+    .goal-card h4 { font-size: 13px; margin-bottom: 8px; }
+    .goal-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-top: 1px dashed #e5e7eb; }
+    .goal-row:first-of-type { border-top: none; }
+    .shot-viewer { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(17, 24, 39, 0.75); z-index: 10000; padding: 24px; }
+    .shot-viewer.open { display: flex; }
+    .shot-viewer-panel { max-width: min(96vw, 1400px); max-height: 92vh; background: #fff; border-radius: 16px; box-shadow: 0 24px 80px rgba(0,0,0,0.35); overflow: hidden; display: flex; flex-direction: column; }
+    .shot-viewer-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
+    .shot-viewer-title { font-size: 13px; font-weight: 700; color: #111827; }
+    .shot-viewer-close { border: none; background: #f3f4f6; color: #374151; border-radius: 999px; width: 32px; height: 32px; cursor: pointer; font-size: 18px; line-height: 1; }
+    .shot-viewer-body { padding: 12px; background: #111827; overflow: auto; }
+    .shot-viewer-image { display: block; max-width: 100%; height: auto; border-radius: 10px; background: #fff; }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .result-list { max-height: unset; }
+      .summary-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Experiment Results</h1>
+  <div class="header-actions">
+    <button class="btn-secondary" id="btn-settings">API Key</button>
+    <button class="btn-primary" id="btn-back">Back to Experiments</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="panel">
+    <div class="panel-header">Experiments</div>
+    <div class="result-list" id="result-list">
+      <div class="detail-empty">Loading results...</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">Details</div>
+    <div class="detail-wrap" id="detail-wrap">
+      <div class="detail-empty">Select an experiment to view results.</div>
+    </div>
+  </section>
+</main>
+
+<div class="modal-backdrop" id="modal-key" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:none;align-items:center;justify-content:center">
+  <style>#modal-key.open { display:flex !important; }</style>
+  <div style="background:#fff;border-radius:10px;padding:28px;width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+    <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">API Key</h2>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:16px">Set the same key as your server's <code>API_KEY</code> environment variable.</p>
+    <input type="text" id="inp-api-key" placeholder="your-secret-key" autocomplete="off"
+      style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:16px" />
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="btn-key-cancel" class="btn-secondary">Cancel</button>
+      <button id="btn-key-save" class="btn-primary">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="shot-viewer" id="shot-viewer" aria-hidden="true">
+  <div class="shot-viewer-panel" role="dialog" aria-modal="true" aria-label="Screenshot preview">
+    <div class="shot-viewer-header">
+      <div class="shot-viewer-title" id="shot-viewer-title">Screenshot preview</div>
+      <button class="shot-viewer-close" id="btn-shot-close" type="button" aria-label="Close preview">×</button>
+    </div>
+    <div class="shot-viewer-body">
+      <img class="shot-viewer-image" id="shot-viewer-image" alt="Screenshot preview" />
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { fetchResultsList, fetchResultDetail, statusBadge, getApiKey, setApiKey } from "./dashboard.js";
+
+  const params = new URLSearchParams(location.search);
+  let selectedId = params.get("id");
+  let listPayload = null;
+
+  function toPercent(rate) {
+    return `${(Number(rate || 0) * 100).toFixed(2)}%`;
+  }
+
+  function fmtNum(value) {
+    return Number(value || 0).toLocaleString();
+  }
+
+  function fmtDate(value) {
+    if (!value) return "-";
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return value;
+    return dt.toLocaleString();
+  }
+
+  function resolveScreenshotSrc(shot) {
+    if (!shot) return "";
+    if (typeof shot.dataUrl === "string" && shot.dataUrl.startsWith("data:image/")) {
+      return shot.dataUrl;
+    }
+    if (typeof shot.url !== "string" || !shot.url) return "";
+    try {
+      return new URL(shot.url, window.location.origin).toString();
+    } catch {
+      return shot.url;
+    }
+  }
+
+  function openShotViewer(shot, title) {
+    const src = resolveScreenshotSrc(shot);
+    if (!src) return;
+    const viewer = document.getElementById("shot-viewer");
+    const image = document.getElementById("shot-viewer-image");
+    const label = document.getElementById("shot-viewer-title");
+    image.src = src;
+    image.alt = title || "Screenshot preview";
+    label.textContent = title || "Screenshot preview";
+    viewer.classList.add("open");
+    viewer.setAttribute("aria-hidden", "false");
+  }
+
+  function closeShotViewer() {
+    const viewer = document.getElementById("shot-viewer");
+    const image = document.getElementById("shot-viewer-image");
+    viewer.classList.remove("open");
+    viewer.setAttribute("aria-hidden", "true");
+    image.removeAttribute("src");
+  }
+
+  function attachScreenshotFallbacks(root) {
+    root.querySelectorAll(".shot-image").forEach((img) => {
+      img.addEventListener("error", () => {
+        const card = img.closest(".shot-card");
+        if (!card) return;
+        img.remove();
+        const empty = document.createElement("div");
+        empty.className = "shot-empty";
+        empty.textContent = "Screenshot unavailable";
+        card.appendChild(empty);
+      }, { once: true });
+    });
+  }
+
+  function renderList() {
+    const root = document.getElementById("result-list");
+    const items = listPayload?.items ?? [];
+    if (!items.length) {
+      root.innerHTML = `<div class="detail-empty">No experiment results yet.</div>`;
+      return;
+    }
+
+    root.innerHTML = items.map(item => `
+      <article class="result-card ${item.experimentId === selectedId ? "active" : ""}" data-id="${item.experimentId}">
+        <div class="result-title">
+          <strong>${item.name}</strong>
+          <span>${statusBadge(item.status)}</span>
+        </div>
+        <div style="font-size:11px;color:#6b7280">Updated: ${fmtDate(item.updatedAt)}</div>
+        <div class="metrics-grid">
+          <div class="metric">
+            <div class="metric-label">Exposures</div>
+            <div class="metric-value">${fmtNum(item.totals.exposures)}</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Conversions</div>
+            <div class="metric-value">${fmtNum(item.totals.conversions)}</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">CVR</div>
+            <div class="metric-value">${toPercent(item.totals.conversionRate)}</div>
+          </div>
+        </div>
+      </article>
+    `).join("");
+
+    root.querySelectorAll("[data-id]").forEach(card => {
+      card.addEventListener("click", () => {
+        selectedId = card.dataset.id;
+        renderList();
+        loadDetail(selectedId);
+      });
+    });
+  }
+
+  function renderDetail(detail) {
+    const root = document.getElementById("detail-wrap");
+    const goalCards = (detail.goals ?? []).map(goal => `
+      <div class="goal-card">
+        <h4>${goal.goalName} (${goal.conversions})</h4>
+        ${goal.variants.map(row => `
+          <div class="goal-row">
+            <span>${row.variantName}</span>
+            <span>${fmtNum(row.conversions)}</span>
+          </div>
+        `).join("")}
+      </div>
+    `).join("");
+
+    const screenshotCards = (detail.variants ?? []).flatMap(variant => {
+      const desktop = variant.screenshots?.desktop;
+      const mobile = variant.screenshots?.mobile;
+      return [
+        { viewport: "Desktop", shot: desktop, variantName: variant.variantName },
+        { viewport: "Mobile", shot: mobile, variantName: variant.variantName }
+      ];
+    }).map(entry => `
+      <article class="shot-card">
+        <div class="shot-meta">
+          <strong>${entry.variantName} - ${entry.viewport}</strong>
+          <span>${entry.shot ? fmtDate(entry.shot.capturedAt) : "No capture"}</span>
+        </div>
+        ${entry.shot
+          ? `<button type="button" class="shot-button" data-shot-title="${entry.variantName} ${entry.viewport} screenshot" data-shot-src="${resolveScreenshotSrc(entry.shot)}">
+              <img class="shot-image" src="${resolveScreenshotSrc(entry.shot)}" alt="${entry.variantName} ${entry.viewport} screenshot" />
+            </button>`
+          : `<div class="shot-empty">No screenshot</div>`
+        }
+      </article>
+    `).join("");
+
+    root.innerHTML = `
+      <h2 style="font-size:20px;font-weight:700">${detail.name}</h2>
+      <div style="margin-top:6px;font-size:12px;color:#6b7280">Experiment ID: ${detail.experimentId}</div>
+
+      <div class="summary-row">
+        <div class="summary-card">
+          <div class="label">Exposures</div>
+          <div class="value">${fmtNum(detail.totals.exposures)}</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Conversions</div>
+          <div class="value">${fmtNum(detail.totals.conversions)}</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Overall CVR</div>
+          <div class="value">${toPercent(detail.totals.conversionRate)}</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Last Event</div>
+          <div class="value" style="font-size:13px">${fmtDate(detail.lastEventAt)}</div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Variant</th>
+            <th>Exposures</th>
+            <th>Conversions</th>
+            <th>CVR</th>
+            <th>Uplift vs Control</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(detail.variants ?? []).map(variant => `
+            <tr>
+              <td>
+                <span class="pill ${variant.isControl ? "pill-control" : "pill-variant"}">${variant.isControl ? "Control" : "Variant"}</span>
+                <div style="margin-top:4px;font-weight:600">${variant.variantName}</div>
+              </td>
+              <td>${fmtNum(variant.exposures)}</td>
+              <td>${fmtNum(variant.conversions)}</td>
+              <td>${toPercent(variant.conversionRate)}</td>
+              <td>
+                ${variant.upliftVsControl === null
+                  ? "-"
+                  : `<span class="${variant.upliftVsControl >= 0 ? "up-positive" : "up-negative"}">${variant.upliftVsControl >= 0 ? "+" : ""}${variant.upliftVsControl.toFixed(2)}%</span>`
+                }
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+
+      <h3 style="margin-top:16px;font-size:14px">Publish-Time Screenshots</h3>
+      <div class="screenshot-grid">${screenshotCards || `<div class="shot-empty">No screenshots saved.</div>`}</div>
+      <p class="note">Screenshots show page appearance at publish time for each variant and viewport.</p>
+
+      <h3 style="margin-top:16px;font-size:14px">Goals</h3>
+      <div class="goal-grid">${goalCards || `<div class="shot-empty">No goals configured.</div>`}</div>
+
+      ${(detail.caveats ?? []).map(c => `<p class="note">${c}</p>`).join("")}
+    `;
+
+    attachScreenshotFallbacks(root);
+    root.querySelectorAll("[data-shot-src]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const title = button.dataset.shotTitle || "Screenshot preview";
+        const src = button.dataset.shotSrc || "";
+        openShotViewer({ url: src }, title);
+      });
+    });
+  }
+
+  async function loadDetail(experimentId) {
+    const root = document.getElementById("detail-wrap");
+    root.innerHTML = `<div class="detail-empty">Loading detail...</div>`;
+    try {
+      const detail = await fetchResultDetail(experimentId);
+      renderDetail(detail);
+    } catch (error) {
+      root.innerHTML = `<div class="detail-empty">Failed to load results detail.</div>`;
+      console.error(error);
+    }
+  }
+
+  async function loadList() {
+    const root = document.getElementById("result-list");
+    root.innerHTML = `<div class="detail-empty">Loading results...</div>`;
+    try {
+      listPayload = await fetchResultsList();
+      if (!selectedId && listPayload.items?.length) {
+        selectedId = listPayload.items[0].experimentId;
+      }
+      renderList();
+      if (selectedId) {
+        loadDetail(selectedId);
+      }
+    } catch (error) {
+      root.innerHTML = `<div class="detail-empty">Failed to load results.</div>`;
+      console.error(error);
+    }
+  }
+
+  document.getElementById("btn-back").addEventListener("click", () => {
+    location.href = "index.html";
+  });
+
+  document.getElementById("btn-settings").addEventListener("click", () => {
+    const modal = document.getElementById("modal-key");
+    document.getElementById("inp-api-key").value = getApiKey();
+    modal.classList.add("open");
+  });
+  document.getElementById("btn-shot-close").addEventListener("click", closeShotViewer);
+  document.getElementById("shot-viewer").addEventListener("click", (event) => {
+    if (event.target === document.getElementById("shot-viewer")) {
+      closeShotViewer();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeShotViewer();
+    }
+  });
+  document.getElementById("btn-key-cancel").addEventListener("click", () => {
+    document.getElementById("modal-key").classList.remove("open");
+  });
+  document.getElementById("btn-key-save").addEventListener("click", () => {
+    const val = document.getElementById("inp-api-key").value.trim();
+    if (!val) return;
+    setApiKey(val);
+    document.getElementById("modal-key").classList.remove("open");
+    loadList();
+  });
+
+  loadList();
+</script>
+</body>
+</html>

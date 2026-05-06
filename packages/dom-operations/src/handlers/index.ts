@@ -1,0 +1,11 @@
+export { applySetText } from "./setText";
+export { applySetStyle } from "./setStyle";
+export { applyReplaceHtml } from "./replaceHtml";
+export { applyMoveBefore } from "./moveBefore";
+export { applyMoveAfter } from "./moveAfter";
+export { applyRemove } from "./remove";
+export { applyInsertHtml } from "./insertHtml";
+export { applyModifyClass } from "./modifyClass";
+export { applyInjectCss } from "./injectCss";
+export { applyToggleVisibility } from "./toggleVisibility";
+export { applySetAttribute } from "./setAttribute";

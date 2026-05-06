@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A/B Testing — Experiments</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f9fafb; color: #111827; }
+    header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    .main { max-width: 1000px; margin: 40px auto; padding: 0 24px; }
+    .toolbar { display: flex; justify-content: flex-end; margin-bottom: 20px; }
+    button { cursor: pointer; border: none; border-radius: 6px; padding: 8px 16px; font-size: 14px; }
+    .btn-primary { background: #7c3aed; color: #fff; }
+    .btn-primary:hover { background: #6d28d9; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-warn { background: #f59e0b; color: #fff; }
+    .btn-go { background: #10b981; color: #fff; }
+    .btn-muted { background: #e5e7eb; color: #374151; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    th { text-align: left; padding: 12px 16px; font-size: 12px; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; background: #f9fafb; }
+    td { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; font-size: 14px; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafa; }
+    .actions { display: flex; gap: 8px; }
+    .empty { text-align: center; padding: 60px 0; color: #9ca3af; }
+
+    /* Modal */
+    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: #fff; border-radius: 10px; padding: 28px; width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    .modal h2 { font-size: 16px; font-weight: 600; margin-bottom: 20px; }
+    .field { margin-bottom: 16px; }
+    label { display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px; }
+    input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+    input[type=text]:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,0.15); }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+    .btn-secondary { background: #f3f4f6; color: #374151; }
+    .btn-secondary:hover { background: #e5e7eb; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>A/B Testing</h1>
+  <button class="btn-secondary" id="btn-settings" style="font-size:13px">⚙ API Key</button>
+</header>
+
+<main class="main">
+  <div class="toolbar">
+    <button class="btn-muted" id="btn-results" style="margin-right:8px">Results</button>
+    <button class="btn-primary" id="btn-new">+ New Experiment</button>
+  </div>
+  <div id="table-container"><p class="empty">Loading…</p></div>
+</main>
+
+<!-- API Key Modal -->
+<div class="modal-backdrop" id="modal-key">
+  <div class="modal">
+    <h2>API Key</h2>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:16px">Required to manage experiments. Set <code>API_KEY</code> on your server and paste the same value here. Stored in your browser only.</p>
+    <div class="field">
+      <label for="inp-api-key">API Key</label>
+      <input type="text" id="inp-api-key" placeholder="your-secret-key" autocomplete="off" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="btn-key-cancel">Cancel</button>
+      <button class="btn-primary" id="btn-key-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Experiment Modal -->
+<div class="modal-backdrop" id="modal">
+  <div class="modal">
+    <h2>New Experiment</h2>
+    <div class="field">
+      <label for="inp-name">Experiment name</label>
+      <input type="text" id="inp-name" placeholder="e.g. Hero CTA test" />
+    </div>
+    <div class="field">
+      <label for="inp-url">Target URL (page to edit)</label>
+      <input type="text" id="inp-url" placeholder="http://localhost:4000/demo/" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="btn-cancel">Cancel</button>
+      <button class="btn-primary" id="btn-create">Create</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { fetchExperiments, createExperiment, updateExperiment, deleteExperiment, statusBadge, getApiKey, setApiKey } from "./dashboard.js";
+
+  function summarizeTargeting(targeting = {}) {
+    const rules = Array.isArray(targeting.urlRules) && targeting.urlRules.length
+      ? targeting.urlRules
+      : (Array.isArray(targeting.urlPatterns) ? targeting.urlPatterns.map(pattern => ({
+          include: true,
+          matchType: "wildcard",
+          pattern
+        })) : []);
+
+    if (!rules.length || (rules.length === 1 && rules[0].include && rules[0].matchType === "wildcard" && rules[0].pattern === "*")) {
+      return "All pages";
+    }
+
+    return rules.map(rule => `${rule.include ? "Include" : "Exclude"} ${rule.matchType}:${rule.pattern}`).join(" | ");
+  }
+
+  async function load() {
+    const container = document.getElementById("table-container");
+    const experiments = await fetchExperiments().catch(() => []);
+
+    if (!experiments.length) {
+      container.innerHTML = '<p class="empty">No experiments yet. Create one to get started.</p>';
+      return;
+    }
+
+    container.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Traffic</th>
+            <th>Target URL</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${experiments.map(exp => `
+            <tr>
+              <td><strong>${exp.name}</strong></td>
+              <td>${statusBadge(exp.status)}</td>
+              <td>${exp.trafficAllocation}%</td>
+              <td style="color:#6b7280;font-size:12px">${exp.targeting?.urlPatterns?.[0] ?? "—"}</td>
+              <td class="actions">
+                <button class="btn-primary btn-sm" onclick="location.href='editor.html?id=${exp.id}'">Edit</button>
+                <button class="btn-muted btn-sm" onclick="location.href='results.html?id=${exp.id}'">Results</button>
+                ${exp.status === "active"
+                  ? `<button class="btn-warn btn-sm" data-pause="${exp.id}">⏸ Pause</button>`
+                  : exp.status === "paused"
+                  ? `<button class="btn-go btn-sm" data-resume="${exp.id}">▶ Resume</button>`
+                  : ""}
+                <button class="btn-danger btn-sm" data-delete="${exp.id}">Delete</button>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+
+    container.querySelectorAll("[data-delete]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Delete this experiment?")) return;
+        await deleteExperiment(btn.dataset.delete);
+        load();
+      });
+    });
+
+    container.querySelectorAll("[data-pause]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        await updateExperiment(btn.dataset.pause, { status: "paused" });
+        load();
+      });
+    });
+
+    container.querySelectorAll("[data-resume]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        await updateExperiment(btn.dataset.resume, { status: "active" });
+        load();
+      });
+    });
+  }
+
+  load();
+
+  // API key modal
+  function openKeyModal() {
+    const modal = document.getElementById("modal-key");
+    document.getElementById("inp-api-key").value = getApiKey();
+    modal.classList.add("open");
+  }
+  document.getElementById("btn-settings").addEventListener("click", openKeyModal);
+  document.getElementById("btn-key-cancel").addEventListener("click", () => {
+    document.getElementById("modal-key").classList.remove("open");
+  });
+  document.getElementById("btn-key-save").addEventListener("click", () => {
+    const val = document.getElementById("inp-api-key").value.trim();
+    if (!val) return;
+    setApiKey(val);
+    document.getElementById("modal-key").classList.remove("open");
+    load();
+  });
+
+  // New experiment modal
+  document.getElementById("btn-results").addEventListener("click", () => {
+    location.href = "results.html";
+  });
+  document.getElementById("btn-new").addEventListener("click", () => {
+    document.getElementById("modal").classList.add("open");
+    document.getElementById("inp-name").focus();
+  });
+  document.getElementById("btn-cancel").addEventListener("click", () => {
+    document.getElementById("modal").classList.remove("open");
+  });
+  document.getElementById("btn-create").addEventListener("click", async () => {
+    const name = document.getElementById("inp-name").value.trim();
+    const targetUrl = document.getElementById("inp-url").value.trim();
+    if (!name) { alert("Enter an experiment name"); return; }
+    const exp = await createExperiment({ name, targetUrl, projectId: "my-site" });
+    document.getElementById("modal").classList.remove("open");
+    location.href = `editor.html?id=${exp.id}`;
+  });
+</script>
+</body>
+</html>
